@@ -1,19 +1,23 @@
-"use client";
-
+import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/page-header";
 import { ButtonLink } from "@/components/ui/button";
 import { StatCard } from "@/components/stat-card";
 import { ExpenseList } from "@/components/expense-list";
 import { EmptyState } from "@/components/ui/empty-state";
-import { useRole } from "@/components/role-context";
-import { useData } from "@/components/data-context";
+import { resolveSessionUser } from "@/lib/current-user";
+import { getBankTransactions, getExpenseSummaries } from "@/lib/data";
 import { formatSEK } from "@/lib/format";
 import { IconPlus } from "@/components/ui/icons";
 import type { Expense } from "@/lib/types";
 
-export default function DashboardPage() {
-  const { role, user } = useRole();
-  const { expenses, bankTransactions } = useData();
+export default async function DashboardPage() {
+  const user = await resolveSessionUser();
+  if (!user) redirect("/login");
+  const { role } = user;
+  const [expenses, bankTransactions] = await Promise.all([
+    getExpenseSummaries(),
+    getBankTransactions(),
+  ]);
 
   const mine = expenses.filter((e) => e.submitterName === user.name);
   const pendingApproval = expenses.filter((e) => e.status === "PENDING_APPROVAL");

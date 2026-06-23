@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { useRole } from "./role-context";
-import { useData } from "./data-context";
 import { Avatar } from "./ui/avatar";
 import {
   IconBank,
@@ -50,11 +49,15 @@ const ROLE_LABELS: Record<Role, string> = {
   ADMIN: "Administratör",
 };
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({
+  children,
+  holdsCard,
+}: {
+  children: React.ReactNode;
+  holdsCard: boolean;
+}) {
   const pathname = usePathname();
   const { role, user } = useRole();
-  const { cards } = useData();
-  const holdsCard = cards.some((c) => c.holderId === user.id);
   const items = NAV.filter(
     (i) => i.roles.includes(role) && (!i.cardHolderOnly || holdsCard),
   );

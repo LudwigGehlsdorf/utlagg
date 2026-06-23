@@ -1,43 +1,26 @@
 import { redirect } from "next/navigation";
-import { auth } from "@/auth";
 import { AppShell } from "@/components/app-shell";
-import { DataProvider } from "@/components/data-context";
 import { RoleProvider } from "@/components/role-context";
-import { getAllData } from "@/lib/data";
-import type { User } from "@/lib/types";
+import { resolveSessionUser } from "@/lib/current-user";
+import { userHoldsCard } from "@/lib/data";
 
-// Always render against fresh DB data on a full load.
+// Always render against fresh DB data on a full load. Each page loads its own
+// data (Server Components); the layout only resolves the session user + chrome.
 export const dynamic = "force-dynamic";
-
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/);
-  return ((parts[0]?.[0] ?? "") + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase();
-}
 
 export default async function AppLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+  const currentUser = await resolveSessionUser();
+  if (!currentUser) redirect("/login");
 
-  const name = session.user.name ?? session.user.email ?? "Användare";
-  const currentUser: User = {
-    id: session.user.id,
-    name,
-    email: session.user.email ?? "",
-    role: session.user.role,
-    initials: initials(name),
-  };
-
-  const data = await getAllData();
+  const holdsCard = await userHoldsCard(currentUser.id);
 
   return (
-    <DataProvider data={data}>
-      <RoleProvider user={currentUser}>
-        <AppShell>{children}</AppShell>
-      </RoleProvider>
-    </DataProvider>
+    <RoleProvider user={currentUser}>
+      <AppShell holdsCard={holdsCard}>{children}</AppShell>
+    </RoleProvider>
   );
 }

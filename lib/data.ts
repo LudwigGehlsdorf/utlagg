@@ -15,17 +15,11 @@ import type {
   User,
 } from "./types";
 import { fortnoxConfigured } from "./fortnox";
+import { initials } from "./format";
+import { oreToSEK as ore } from "./money";
 
-const ore = (v: number | null | undefined) => (v ?? 0) / 100;
 const isoDate = (d: Date | null | undefined) =>
   d ? d.toISOString().slice(0, 10) : "";
-
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/);
-  const first = parts[0]?.[0] ?? "";
-  const last = parts.length > 1 ? parts[parts.length - 1][0] : "";
-  return (first + last).toUpperCase();
-}
 
 // Typed audit events → human-readable Swedish labels (rendered in the timeline).
 const EVENT_LABEL: Record<ExpenseEventType, string> = {
@@ -131,45 +125,58 @@ export async function getCards(): Promise<Card[]> {
   }));
 }
 
-export async function getExpenses(): Promise<Expense[]> {
-  const expenses = await prisma.expense.findMany({
-    orderBy: { reference: "desc" },
-    include: {
-      submitter: true,
-      allocations: {
-        include: {
-          costCenter: { include: { approver: true } },
-          approvedBy: true,
-        },
-      },
-      matchedTransaction: true,
-      events: { orderBy: { createdAt: "asc" }, include: { actor: true } },
-      receipts: { orderBy: { createdAt: "desc" }, take: 1 },
-      verification: {
-        include: {
-          createdBy: true,
-          lines: { orderBy: { sortOrder: "asc" }, include: { costCenter: true } },
-        },
-      },
-    },
-  });
-  return expenses.map((e) => ({
+// Map one allocation row (+ its cost-centre/approver relations) to the UI shape.
+// Shared by both the list and the detail mappers.
+function mapAllocation(a: {
+  id: string;
+  costCenterId: string;
+  costCenter: { code: string; name: string; approverId: string | null; approver: { name: string } | null };
+  amount: number;
+  comment: string | null;
+  approvedById: string | null;
+  approvedBy: { name: string } | null;
+  approvedAt: Date | null;
+}): CostAllocation {
+  return {
+    id: a.id,
+    costCenterId: a.costCenterId,
+    costCenterCode: a.costCenter.code,
+    costCenterName: a.costCenter.name,
+    approverId: a.costCenter.approverId ?? undefined,
+    approverName: a.costCenter.approver?.name ?? "—",
+    amount: ore(a.amount),
+    comment: a.comment ?? undefined,
+    approvedById: a.approvedById ?? undefined,
+    approvedByName: a.approvedBy?.name ?? undefined,
+    approvedAt: a.approvedAt?.toISOString() ?? undefined,
+  };
+}
+
+// Relations needed to render a row in any expense list (no per-expense audit
+// timeline and no voucher lines — those are loaded only on the detail page).
+const summaryInclude = {
+  submitter: true,
+  allocations: {
+    include: { costCenter: { include: { approver: true } }, approvedBy: true },
+  },
+  receipts: { orderBy: { createdAt: "desc" }, take: 1 },
+  verification: { include: { createdBy: true } },
+} as const;
+
+type SummaryRow = Awaited<
+  ReturnType<typeof prisma.expense.findFirstOrThrow<{ include: typeof summaryInclude }>>
+>;
+
+function fortnoxLabel(v: { fortnoxSeries: string | null; fortnoxNumber: number | null }): string | undefined {
+  return v.fortnoxSeries && v.fortnoxNumber != null ? `${v.fortnoxSeries}-${v.fortnoxNumber}` : undefined;
+}
+
+function mapSummary(e: SummaryRow): Expense {
+  return {
     id: e.reference,
     title: e.title,
     submitterName: e.submitter.name,
-    allocations: e.allocations.map((a): CostAllocation => ({
-      id: a.id,
-      costCenterId: a.costCenterId,
-      costCenterCode: a.costCenter.code,
-      costCenterName: a.costCenter.name,
-      approverId: a.costCenter.approverId ?? undefined,
-      approverName: a.costCenter.approver?.name ?? "—",
-      amount: ore(a.amount),
-      comment: a.comment ?? undefined,
-      approvedById: a.approvedById ?? undefined,
-      approvedByName: a.approvedBy?.name ?? undefined,
-      approvedAt: a.approvedAt?.toISOString() ?? undefined,
-    })),
+    allocations: e.allocations.map(mapAllocation),
     paymentType: e.paymentType,
     status: (e.status === "REJECTED" ? "CHANGES_REQUESTED" : e.status) as Expense["status"],
     merchant: e.merchant ?? "",
@@ -184,10 +191,50 @@ export async function getExpenses(): Promise<Expense[]> {
           date: isoDate(e.verification.date),
           description: e.verification.description,
           createdBy: e.verification.createdBy?.name,
-          fortnoxLabel:
-            e.verification.fortnoxSeries && e.verification.fortnoxNumber != null
-              ? `${e.verification.fortnoxSeries}-${e.verification.fortnoxNumber}`
-              : undefined,
+          fortnoxLabel: fortnoxLabel(e.verification),
+          exportedAt: e.verification.exportedAt?.toISOString() ?? undefined,
+          lines: [],
+        }
+      : undefined,
+    revisions: [],
+  };
+}
+
+// Lightweight list for every index/list screen. Omits the audit timeline and
+// voucher lines so we don't drag the whole history of every expense to the UI.
+export async function getExpenseSummaries(): Promise<Expense[]> {
+  const expenses = await prisma.expense.findMany({
+    orderBy: { reference: "desc" },
+    include: summaryInclude,
+  });
+  return expenses.map(mapSummary);
+}
+
+// Full single expense for the detail page — adds the event timeline and the
+// verification's voucher lines on top of the summary shape.
+export async function getExpense(reference: string): Promise<Expense | null> {
+  const e = await prisma.expense.findUnique({
+    where: { reference },
+    include: {
+      ...summaryInclude,
+      events: { orderBy: { createdAt: "asc" }, include: { actor: true } },
+      verification: {
+        include: {
+          createdBy: true,
+          lines: { orderBy: { sortOrder: "asc" }, include: { costCenter: true } },
+        },
+      },
+    },
+  });
+  if (!e) return null;
+  return {
+    ...mapSummary(e),
+    verification: e.verification
+      ? {
+          date: isoDate(e.verification.date),
+          description: e.verification.description,
+          createdBy: e.verification.createdBy?.name,
+          fortnoxLabel: fortnoxLabel(e.verification),
           exportedAt: e.verification.exportedAt?.toISOString() ?? undefined,
           lines: e.verification.lines.map((l) => ({
             id: l.id,
@@ -207,7 +254,13 @@ export async function getExpenses(): Promise<Expense[]> {
       comment: ev.comment ?? undefined,
       date: ev.createdAt.toISOString(),
     })),
-  }));
+  };
+}
+
+// Does this user hold a section card? Drives one nav item; a count, not a list.
+export async function userHoldsCard(userId: string): Promise<boolean> {
+  const n = await prisma.card.count({ where: { holderId: userId } });
+  return n > 0;
 }
 
 // The org's single Fortnox connection status (no secrets — safe for the client).
@@ -222,18 +275,3 @@ export async function getFortnoxStatus(): Promise<FortnoxStatus> {
   };
 }
 
-export async function getAllData() {
-  const [users, costCenters, committees, bankTransactions, expenses, cards, fortnox] =
-    await Promise.all([
-      getUsers(),
-      getCostCenters(),
-      getCommittees(),
-      getBankTransactions(),
-      getExpenses(),
-      getCards(),
-      getFortnoxStatus(),
-    ]);
-  return { users, costCenters, committees, bankTransactions, expenses, cards, fortnox };
-}
-
-export type AppData = Awaited<ReturnType<typeof getAllData>>;
