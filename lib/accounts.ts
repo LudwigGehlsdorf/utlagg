@@ -30,9 +30,7 @@ export const ACCOUNTS: Account[] = [
 // Frequently used accounts referenced by the default posting logic.
 export const ACCOUNT = {
   BANK: "1930",
-  INPUT_VAT: "2640",
   MEMBER_DEBT: "2890",
-  REPRESENTATION: "6071",
 } as const;
 
 export function accountName(number: string): string {

@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { RoleProvider } from "@/components/role-context";
+import { NotificationsProvider } from "@/components/notifications";
+import { ConfirmProvider } from "@/components/confirm-dialog";
 import { resolveSessionUser } from "@/lib/current-user";
 import { userHoldsCard } from "@/lib/data";
 
@@ -20,7 +22,11 @@ export default async function AppLayout({
 
   return (
     <RoleProvider user={currentUser}>
-      <AppShell holdsCard={holdsCard}>{children}</AppShell>
+      <NotificationsProvider>
+        <ConfirmProvider>
+          <AppShell holdsCard={holdsCard}>{children}</AppShell>
+        </ConfirmProvider>
+      </NotificationsProvider>
     </RoleProvider>
   );
 }

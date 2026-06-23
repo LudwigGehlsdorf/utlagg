@@ -122,3 +122,23 @@ export const IconChart = (p: P) => (
     <path d="M3 3v18h18M7 16v-4M11 16V8M15 16v-7M19 16v-2" />
   </Svg>
 );
+
+export const IconX = (p: P) => (
+  <Svg {...p}>
+    <path d="M6 6l12 12M18 6 6 18" />
+  </Svg>
+);
+
+export const IconAlert = (p: P) => (
+  <Svg {...p}>
+    <path d="M12 3 2 20h20L12 3Z" />
+    <path d="M12 9v5M12 17.5v.5" />
+  </Svg>
+);
+
+export const IconInfo = (p: P) => (
+  <Svg {...p}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 11v5M12 8v.5" />
+  </Svg>
+);

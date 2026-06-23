@@ -6,6 +6,7 @@ import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useRole } from "@/components/role-context";
+import { useNotify } from "@/components/notifications";
 import { formatDate, formatDateTime, formatSEK } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { FortnoxStatus } from "@/lib/types";
@@ -50,6 +51,7 @@ const filterInput =
 
 export default function LedgerClient({ fortnox }: { fortnox: FortnoxStatus }) {
   const { role } = useRole();
+  const notify = useNotify();
   const canSync = role === "BOOKKEEPER" || role === "ADMIN";
 
   const [data, setData] = useState<SpendResponse | null>(null);
@@ -59,7 +61,6 @@ export default function LedgerClient({ fortnox }: { fortnox: FortnoxStatus }) {
   const [ccFilter, setCcFilter] = useState<string>("all");
   const [query, setQuery] = useState("");
   const [syncing, setSyncing] = useState(false);
-  const [syncMsg, setSyncMsg] = useState<string | null>(null);
 
   // Per (cc|account) drill-down state.
   const [openKey, setOpenKey] = useState<string | null>(null);
@@ -93,7 +94,6 @@ export default function LedgerClient({ fortnox }: { fortnox: FortnoxStatus }) {
 
   async function doSync() {
     setSyncing(true);
-    setSyncMsg(null);
     try {
       const res = await fetch("/api/fortnox/sync", {
         method: "POST",
@@ -102,10 +102,10 @@ export default function LedgerClient({ fortnox }: { fortnox: FortnoxStatus }) {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Synk misslyckades");
-      setSyncMsg(`Synkade ${json.totalVouchers} verifikationer.`);
+      notify.success(`Synkade ${json.totalVouchers} verifikationer.`, "Synk klar");
       await load(year);
     } catch (e) {
-      setSyncMsg(e instanceof Error ? e.message : "Synk misslyckades");
+      notify.error(e instanceof Error ? e.message : "Synk misslyckades");
     } finally {
       setSyncing(false);
     }
@@ -183,7 +183,6 @@ export default function LedgerClient({ fortnox }: { fortnox: FortnoxStatus }) {
             ) : (
               <span className="text-muted">Ännu inte synkad för valt år.</span>
             )}
-            {syncMsg && <span className="ml-2 text-foreground">{syncMsg}</span>}
           </div>
           {canSync && fortnox.connected && (
             <Button size="sm" disabled={syncing} onClick={doSync}>

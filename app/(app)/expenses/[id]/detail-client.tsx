@@ -9,6 +9,8 @@ import { StatusPill, Tag } from "@/components/ui/status-pill";
 import { EmptyState } from "@/components/ui/empty-state";
 import { IconCheck, IconLink, IconReceipt, IconSearch } from "@/components/ui/icons";
 import { useRole } from "@/components/role-context";
+import { useNotify } from "@/components/notifications";
+import { useConfirm } from "@/components/confirm-dialog";
 import { ReceiptViewer } from "@/components/receipt-viewer";
 import { PAYMENT_META, isEditable, isSigned } from "@/lib/status";
 import { formatDate, formatDateTime, formatSEK } from "@/lib/format";
@@ -25,12 +27,11 @@ export default function ExpenseDetailClient({
 }) {
   const router = useRouter();
   const { role, user } = useRole();
-  const [note, setNote] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const notify = useNotify();
+  const confirm = useConfirm();
   const [busy, setBusy] = useState(false);
   const [commentAction, setCommentAction] = useState<null | "request_changes">(null);
   const [comment, setComment] = useState("");
-  const [confirmDelete, setConfirmDelete] = useState(false);
   const [matchQuery, setMatchQuery] = useState("");
   const [matching, setMatching] = useState(false);
   const txn = bankTransactions.find((t) => t.id === expense?.matchedTransactionId);
@@ -82,7 +83,6 @@ export default function ExpenseDetailClient({
 
   async function doTransition(action: string, c?: string) {
     setBusy(true);
-    setError(null);
     try {
       const res = await fetch(`/api/expenses/${expense!.id}/transition`, {
         method: "POST",
@@ -95,10 +95,10 @@ export default function ExpenseDetailClient({
       }
       setCommentAction(null);
       setComment("");
-      setNote(SUCCESS[action] ?? "Klart.");
+      notify.success(SUCCESS[action] ?? "Klart.");
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Något gick fel");
+      notify.error(err instanceof Error ? err.message : "Något gick fel");
     } finally {
       setBusy(false);
     }
@@ -107,21 +107,22 @@ export default function ExpenseDetailClient({
   // Export to Fortnox is a real API call (its own route), not a status flip.
   async function doExport() {
     setBusy(true);
-    setError(null);
     try {
       const res = await fetch(`/api/expenses/${expense!.id}/export`, { method: "POST" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(data.error || `Exporten misslyckades (${res.status})`);
       }
-      setNote(
-        data.attachWarning
-          ? `Exporterat till Fortnox (verifikat ${data.label}), men kvittot kunde inte bifogas.`
-          : `Exporterat till Fortnox (verifikat ${data.label}).`,
-      );
+      if (data.attachWarning) {
+        notify.info(
+          `Exporterat till Fortnox (verifikat ${data.label}), men kvittot kunde inte bifogas.`,
+        );
+      } else {
+        notify.success(`Exporterat till Fortnox (verifikat ${data.label}).`);
+      }
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Något gick fel");
+      notify.error(err instanceof Error ? err.message : "Något gick fel");
     } finally {
       setBusy(false);
     }
@@ -129,7 +130,6 @@ export default function ExpenseDetailClient({
 
   async function doMatch(transactionId: string | null) {
     setMatching(true);
-    setError(null);
     try {
       const res = await fetch(`/api/expenses/${expense!.id}/match`, {
         method: "POST",
@@ -138,11 +138,11 @@ export default function ExpenseDetailClient({
       });
       if (!res.ok) {
         const { error: msg } = await res.json().catch(() => ({ error: "" }));
-        setError(msg || "Matchningen misslyckades");
+        notify.error(msg || "Matchningen misslyckades");
         return;
       }
       setMatchQuery("");
-      setNote(transactionId ? "Transaktion matchad." : "Matchning borttagen.");
+      notify.success(transactionId ? "Transaktion matchad." : "Matchning borttagen.");
       router.refresh();
     } finally {
       setMatching(false);
@@ -150,8 +150,14 @@ export default function ExpenseDetailClient({
   }
 
   async function doDelete() {
+    const ok = await confirm({
+      title: "Ta bort utlägget?",
+      message: "Utlägget och dess kvitto tas bort permanent.",
+      confirmLabel: "Ta bort",
+      tone: "danger",
+    });
+    if (!ok) return;
     setBusy(true);
-    setError(null);
     try {
       const res = await fetch(`/api/expenses/${expense!.id}`, {
         method: "DELETE",
@@ -160,11 +166,12 @@ export default function ExpenseDetailClient({
         const { error: msg } = await res.json().catch(() => ({ error: "" }));
         throw new Error(msg || `Kunde inte ta bort (${res.status})`);
       }
+      notify.success("Utlägget togs bort.");
       router.push("/expenses");
       router.refresh();
     } catch (err) {
       setBusy(false);
-      setError(err instanceof Error ? err.message : "Något gick fel");
+      notify.error(err instanceof Error ? err.message : "Något gick fel");
     }
   }
 
@@ -177,13 +184,6 @@ export default function ExpenseDetailClient({
         description={`${expense.id} · ${expense.submitterName}`}
         action={<StatusPill status={expense.status} />}
       />
-
-      {note && (
-        <div className="mb-5 flex items-center gap-2 rounded-xl bg-success-soft px-4 py-3 text-sm text-success">
-          <IconCheck className="size-4 shrink-0" />
-          {note}
-        </div>
-      )}
 
       <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
         {/* Left column */}
@@ -497,8 +497,6 @@ export default function ExpenseDetailClient({
                 </ButtonLink>
               )}
 
-              {error && <p className="text-sm text-danger">{error}</p>}
-
               {!hasPrimaryAction && !canEdit && !canDelete && (
                 <p className="text-sm text-muted">
                   Inga åtgärder tillgängliga i din roll för det här läget.
@@ -507,39 +505,13 @@ export default function ExpenseDetailClient({
 
               {canDelete && (
                 <div className="border-t border-border pt-2.5">
-                  {!confirmDelete ? (
-                    <button
-                      onClick={() => setConfirmDelete(true)}
-                      disabled={busy}
-                      className="h-10 w-full rounded-full border border-border px-5 text-sm font-medium text-danger transition-colors hover:bg-danger-soft disabled:opacity-40"
-                    >
-                      Ta bort utlägg
-                    </button>
-                  ) : (
-                    <div className="space-y-2.5">
-                      <p className="text-sm text-muted">
-                        Ta bort utlägget permanent? Detta går inte att ångra.
-                      </p>
-                      <div className="flex gap-2.5">
-                        <Button
-                          variant="secondary"
-                          className="flex-1"
-                          disabled={busy}
-                          onClick={() => setConfirmDelete(false)}
-                        >
-                          Avbryt
-                        </Button>
-                        <Button
-                          variant="danger"
-                          className="flex-1"
-                          disabled={busy}
-                          onClick={doDelete}
-                        >
-                          Ta bort
-                        </Button>
-                      </div>
-                    </div>
-                  )}
+                  <button
+                    onClick={doDelete}
+                    disabled={busy}
+                    className="h-10 w-full rounded-full border border-border px-5 text-sm font-medium text-danger transition-colors hover:bg-danger-soft disabled:opacity-40"
+                  >
+                    Ta bort utlägg
+                  </button>
                 </div>
               )}
             </CardBody>

@@ -5,6 +5,8 @@ import { PageHeader } from "@/components/page-header";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Card, CardBody } from "@/components/ui/card";
 import { useRole } from "@/components/role-context";
+import { useNotify } from "@/components/notifications";
+import { useConfirm } from "@/components/confirm-dialog";
 import { cn } from "@/lib/utils";
 
 interface Revision { id: string; name: string; createdAt: string; clonedFromId: string | null }
@@ -12,6 +14,8 @@ interface Budget { id: string; year: number; name: string; revisions: Revision[]
 
 export default function BudgetListPage() {
   const { role } = useRole();
+  const notify = useNotify();
+  const confirm = useConfirm();
   const isAdmin = role === "ADMIN";
 
   const [budgets, setBudgets] = useState<Budget[]>([]);
@@ -29,13 +33,22 @@ export default function BudgetListPage() {
 
   async function createBudget() {
     setCreating(true);
-    const res = await fetch("/api/budgets", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ year: Number(newYear) }),
-    });
-    if (res.ok) { await load(); }
-    setCreating(false);
+    try {
+      const res = await fetch("/api/budgets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ year: Number(newYear) }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        notify.error(data.error ?? "Kunde inte skapa budgeten");
+        return;
+      }
+      notify.success("Budget skapad.");
+      await load();
+    } finally {
+      setCreating(false);
+    }
   }
 
   async function cloneRevision(budgetId: string, revisionId: string, revisions: Revision[]) {
@@ -46,13 +59,34 @@ export default function BudgetListPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ cloneFromId: revisionId, name }),
     });
-    if (res.ok) await load();
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      notify.error(data.error ?? "Kunde inte klona revisionen");
+      return;
+    }
+    notify.success("Revision klonad.");
+    await load();
   }
 
   async function deleteRevision(revisionId: string, revisions: Revision[]) {
-    if (revisions.length <= 1) return alert("Kan inte ta bort den enda revisionen.");
-    if (!confirm("Ta bort revisionen?")) return;
-    await fetch(`/api/budgets/revisions/${revisionId}`, { method: "DELETE" });
+    if (revisions.length <= 1) {
+      notify.error("Kan inte ta bort den enda revisionen.");
+      return;
+    }
+    const ok = await confirm({
+      title: "Ta bort revisionen?",
+      message: "Revisionen och dess budgetrader tas bort permanent.",
+      confirmLabel: "Ta bort",
+      tone: "danger",
+    });
+    if (!ok) return;
+    const res = await fetch(`/api/budgets/revisions/${revisionId}`, { method: "DELETE" });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      notify.error(data.error ?? "Kunde inte ta bort revisionen");
+      return;
+    }
+    notify.success("Revision borttagen.");
     await load();
   }
 

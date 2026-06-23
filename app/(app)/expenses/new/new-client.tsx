@@ -4,6 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ReceiptViewer } from "@/components/receipt-viewer";
+import { useNotify } from "@/components/notifications";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody } from "@/components/ui/card";
@@ -35,6 +36,7 @@ export default function NewExpenseClient({
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const notify = useNotify();
   // Only active (Fortnox-synced) cost centres are selectable for new expenses.
   const activeCostCenters = costCenters.filter((c) => c.active);
   // "Redovisa" deep-link from the Kortköp page: ?txn=<bankTxnId> pre-matches the
@@ -71,7 +73,6 @@ export default function NewExpenseClient({
   const [clearing, setClearing] = useState("");
   const [account, setAccount] = useState("");
   const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
 
   // Real receipt upload (browser → Next route → MinIO).
   const fileInput = useRef<HTMLInputElement>(null);
@@ -80,7 +81,6 @@ export default function NewExpenseClient({
   const [receiptId, setReceiptId] = useState<string | null>(null);
   const [uploadedMime, setUploadedMime] = useState<string>("");
   const [uploadedName, setUploadedName] = useState<string>("");
-  const [uploadError, setUploadError] = useState<string | null>(null);
 
   // Create a DRAFT expense once, then reuse it for further uploads.
   async function ensureDraft(): Promise<{ id: string; reference: string }> {
@@ -104,7 +104,6 @@ export default function NewExpenseClient({
     // First upload pre-fills the form and advances; a later "Byt kvitto" just
     // swaps the stored receipt without clobbering edits you've already made.
     const isFirst = !receiptId;
-    setUploadError(null);
     setScanning(true);
     try {
       const draft = await ensureDraft();
@@ -133,7 +132,7 @@ export default function NewExpenseClient({
       }, 900);
     } catch (err) {
       setScanning(false);
-      setUploadError(err instanceof Error ? err.message : "Något gick fel");
+      notify.error(err instanceof Error ? err.message : "Något gick fel");
     }
   }
 
@@ -178,20 +177,19 @@ export default function NewExpenseClient({
   }
 
   async function saveDraft() {
-    setSaveError(null);
     setSaving(true);
     try {
       await persist();
+      notify.success("Utkast sparat.");
       router.push(`/expenses/${reference}`);
       router.refresh();
     } catch (err) {
       setSaving(false);
-      setSaveError(err instanceof Error ? err.message : "Något gick fel");
+      notify.error(err instanceof Error ? err.message : "Något gick fel");
     }
   }
 
   async function submitExpense() {
-    setSaveError(null);
     setSaving(true);
     try {
       await persist();
@@ -204,11 +202,12 @@ export default function NewExpenseClient({
         const { error } = await res.json().catch(() => ({ error: "" }));
         throw new Error(error || "Sparat, men kunde inte skickas in");
       }
+      notify.success("Utlägget skickades in för attest.");
       router.push(`/expenses/${reference}`);
       router.refresh();
     } catch (err) {
       setSaving(false);
-      setSaveError(err instanceof Error ? err.message : "Något gick fel");
+      notify.error(err instanceof Error ? err.message : "Något gick fel");
     }
   }
 
@@ -300,11 +299,6 @@ export default function NewExpenseClient({
                   </>
                 )}
               </div>
-            )}
-            {uploadError && (
-              <p className="mt-3 text-center text-sm text-danger">
-                {uploadError}
-              </p>
             )}
           </CardBody>
         </Card>
@@ -405,8 +399,6 @@ export default function NewExpenseClient({
                 ))}
               </div>
             </div>
-
-            {saveError && <p className="text-sm text-danger">{saveError}</p>}
             <div className="flex flex-wrap justify-between gap-2.5 pt-1">
               <Button variant="secondary" onClick={() => setStep(0)}>
                 Tillbaka
@@ -518,8 +510,6 @@ export default function NewExpenseClient({
                 </div>
               </>
             )}
-
-            {saveError && <p className="text-sm text-danger">{saveError}</p>}
             <div className="flex flex-wrap justify-between gap-2.5 pt-1">
               <Button variant="secondary" onClick={() => setStep(1)}>
                 Tillbaka
@@ -576,8 +566,6 @@ export default function NewExpenseClient({
               )].join(", ")}{" "}
               för attest.
             </div>
-
-            {saveError && <p className="text-sm text-danger">{saveError}</p>}
             <div className="flex flex-wrap justify-between gap-2.5 pt-1">
               <Button variant="secondary" onClick={() => setStep(2)}>
                 Tillbaka

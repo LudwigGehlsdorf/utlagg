@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { ButtonLink, Button } from "@/components/ui/button";
 import { useRole } from "@/components/role-context";
+import { useNotify } from "@/components/notifications";
 import { effectiveKind, type AccountKind } from "@/lib/budget";
 import { cn } from "@/lib/utils";
 import type { CostCenter } from "@/lib/types";
@@ -67,6 +68,7 @@ export default function BudgetRevisionClient({
 }) {
   const { revisionId } = useParams<{ revisionId: string }>();
   const { role, user } = useRole();
+  const notify = useNotify();
   const isAdmin = role === "ADMIN";
   const canComment = role === "ADMIN" || role === "APPROVER";
 
@@ -75,7 +77,6 @@ export default function BudgetRevisionClient({
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<string>(RAMBUDGET);
   const [search, setSearch] = useState("");
-  const [error, setError] = useState<string | null>(null);
   const [addCcId, setAddCcId] = useState("");
 
   const [openComments, setOpenComments] = useState<Set<string>>(new Set());
@@ -107,7 +108,6 @@ export default function BudgetRevisionClient({
   useEffect(() => { load(); }, [load]);
 
   async function api(url: string, method: string, body?: unknown) {
-    setError(null);
     const res = await fetch(url, {
       method,
       headers: body ? { "Content-Type": "application/json" } : undefined,
@@ -115,7 +115,7 @@ export default function BudgetRevisionClient({
     });
     if (!res.ok) {
       const { error: msg } = await res.json().catch(() => ({ error: "" }));
-      setError(msg || `Fel (${res.status})`);
+      notify.error(msg || `Fel (${res.status})`);
       return false;
     }
     await load();
@@ -225,8 +225,6 @@ export default function BudgetRevisionClient({
         </div>
         <ButtonLink href="/budget" variant="secondary" size="sm">← Alla budgetar</ButtonLink>
       </div>
-
-      {error && <p className="mb-4 rounded-xl bg-danger/10 px-4 py-2 text-sm text-danger">{error}</p>}
 
       <div className="flex gap-4">
         {/* ── Sidebar ──────────────────────────────────────────── */}

@@ -11,6 +11,7 @@ import type { AllocationRow } from "@/components/allocation-editor";
 import { EmptyState } from "@/components/ui/empty-state";
 import { IconReceipt, IconUpload } from "@/components/ui/icons";
 import { ReceiptViewer } from "@/components/receipt-viewer";
+import { useNotify } from "@/components/notifications";
 import { PAYMENT_META, isEditable } from "@/lib/status";
 import { cn } from "@/lib/utils";
 import type { CostCenter, Expense, PaymentType } from "@/lib/types";
@@ -26,6 +27,7 @@ export default function EditExpenseClient({
 }) {
   const params = useParams<{ id: string }>();
   const router = useRouter();
+  const notify = useNotify();
   const expense = expenses.find((e) => e.id === params.id);
   // Active cost centres, plus any this expense already uses (so an existing
   // allocation on a now-inactive cost centre stays selectable while editing).
@@ -47,7 +49,6 @@ export default function EditExpenseClient({
     expense?.paymentType ?? "CARD",
   );
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [receiptId, setReceiptId] = useState(expense?.receiptId);
   const [receiptMime, setReceiptMime] = useState(expense?.receiptMimeType ?? "image/jpeg");
   const [uploading, setUploading] = useState(false);
@@ -80,7 +81,6 @@ export default function EditExpenseClient({
 
   async function uploadReceipt(file: File) {
     setUploading(true);
-    setError(null);
     try {
       // Delete the current receipt before uploading a new one.
       if (receiptId) {
@@ -101,7 +101,7 @@ export default function EditExpenseClient({
       setReceiptId(data.id);
       setReceiptMime(data.mimeType ?? "image/jpeg");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Uppladdningen misslyckades");
+      notify.error(err instanceof Error ? err.message : "Uppladdningen misslyckades");
     } finally {
       setUploading(false);
       if (fileRef.current) fileRef.current.value = "";
@@ -109,7 +109,6 @@ export default function EditExpenseClient({
   }
 
   async function save(submitAfter = false) {
-    setError(null);
     setSaving(true);
     try {
       const res = await fetch(`/api/expenses/${expense!.id}`, {
@@ -143,11 +142,12 @@ export default function EditExpenseClient({
           throw new Error(msg || "Sparat, men kunde inte skickas in");
         }
       }
+      notify.success(submitAfter ? "Sparat och inskickat." : "Ändringarna sparades.");
       router.push(`/expenses/${expense!.id}`);
       router.refresh();
     } catch (err) {
       setSaving(false);
-      setError(err instanceof Error ? err.message : "Något gick fel");
+      notify.error(err instanceof Error ? err.message : "Något gick fel");
     }
   }
 
@@ -267,8 +267,6 @@ export default function EditExpenseClient({
               ))}
             </div>
           </div>
-
-          {error && <p className="text-sm text-danger">{error}</p>}
 
           <div className="flex flex-wrap justify-end gap-2.5 pt-1">
             <ButtonLink href={`/expenses/${expense.id}`} variant="secondary">

@@ -13,6 +13,8 @@ import {
   type PageSize,
 } from "@/components/ui/table-controls";
 import { useRole } from "@/components/role-context";
+import { useNotify } from "@/components/notifications";
+import { useConfirm } from "@/components/confirm-dialog";
 import { formatDate, formatSEK } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { BankTransaction } from "@/lib/types";
@@ -33,10 +35,10 @@ export default function BankClient({
 }) {
   const { role } = useRole();
   const router = useRouter();
+  const notify = useNotify();
+  const confirm = useConfirm();
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
-  const [importResult, setImportResult] = useState<ImportResult | null>(null);
-  const [importError, setImportError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [matchFilter, setMatchFilter] = useState<MatchFilter>("all");
 
@@ -45,8 +47,6 @@ export default function BankClient({
 
   async function upload(file: File) {
     setBusy(true);
-    setImportError(null);
-    setImportResult(null);
     try {
       const res = await fetch("/api/bank/import", {
         method: "POST",
@@ -55,10 +55,15 @@ export default function BankClient({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setImportError(data.error ?? "Importen misslyckades");
+        notify.error(data.error ?? "Importen misslyckades");
         return;
       }
-      setImportResult(data as ImportResult);
+      const r = data as ImportResult;
+      const parts = [`${r.imported} importerade`];
+      if (r.skipped > 0) parts.push(`${r.skipped} dubbletter`);
+      if (r.cardsCreated > 0) parts.push(`${r.cardsCreated} nya kort`);
+      if (r.skippedRows > 0) parts.push(`${r.skippedRows} rader hoppades över`);
+      notify.success(parts.join(" · "), "Import klar");
       router.refresh();
     } finally {
       setBusy(false);
@@ -67,12 +72,19 @@ export default function BankClient({
   }
 
   async function deleteTxn(id: string) {
+    const ok = await confirm({
+      title: "Ta bort transaktion?",
+      message: "Banktransaktionen tas bort permanent.",
+      confirmLabel: "Ta bort",
+      tone: "danger",
+    });
+    if (!ok) return;
     setDeleting(id);
     try {
       const res = await fetch(`/api/bank/${id}`, { method: "DELETE" });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        alert(data.error ?? "Kunde inte ta bort transaktionen");
+        notify.error(data.error ?? "Kunde inte ta bort transaktionen");
         return;
       }
       router.refresh();
@@ -136,21 +148,6 @@ export default function BankClient({
                 <IconUpload className="size-4" />
                 {busy ? "Importerar…" : "Välj CSV-fil"}
               </Button>
-              {importResult && (
-                <p className="mt-4 text-xs text-muted">
-                  <span className="font-medium text-success">
-                    {importResult.imported} importerade
-                  </span>
-                  {importResult.skipped > 0 && ` · ${importResult.skipped} dubbletter`}
-                  {importResult.cardsCreated > 0 &&
-                    ` · ${importResult.cardsCreated} nya kort`}
-                  {importResult.skippedRows > 0 &&
-                    ` · ${importResult.skippedRows} rader hoppades över`}
-                </p>
-              )}
-              {importError && (
-                <p className="mt-4 text-xs text-danger">{importError}</p>
-              )}
             </div>
           </CardBody>
         </Card>

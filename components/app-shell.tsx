@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { useRole } from "./role-context";
+import { NotificationBanners } from "./notifications";
 import { Avatar } from "./ui/avatar";
 import {
   IconBank,
@@ -122,6 +123,7 @@ export function AppShell({
         </header>
 
         <main className="mx-auto w-full max-w-7xl flex-1 px-5 py-8 md:px-8">
+          <NotificationBanners />
           {children}
         </main>
       </div>

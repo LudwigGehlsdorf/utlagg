@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
 import { Tag } from "@/components/ui/status-pill";
 import { useRole } from "@/components/role-context";
+import { useNotify } from "@/components/notifications";
 import { cn } from "@/lib/utils";
 import type {
   Card as SectionCard,
@@ -56,22 +57,27 @@ export default function AdminClient({
   cards: SectionCard[];
 }) {
   const { role } = useRole();
+  const notify = useNotify();
   const isAdmin = role === "ADMIN";
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("cost-centers");
   const [pending, setPending] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
-  const [syncMsg, setSyncMsg] = useState<string | null>(null);
 
   // Generic helper: fire a mutation keyed by `key` (to disable that control).
   async function mutate(key: string, url: string, method: string, body: unknown) {
     setPending(key);
     try {
-      await fetch(url, {
+      const res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        notify.error(data.error ?? "Kunde inte spara ändringen");
+        return;
+      }
       router.refresh();
     } finally {
       setPending(null);
@@ -80,16 +86,16 @@ export default function AdminClient({
 
   async function syncCostCenters() {
     setSyncing(true);
-    setSyncMsg(null);
     try {
       const res = await fetch("/api/cost-centers/sync", { method: "POST" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setSyncMsg(data.error ?? "Synk misslyckades");
+        notify.error(data.error ?? "Synk misslyckades");
         return;
       }
-      setSyncMsg(
+      notify.success(
         `Uppdaterade ${data.upserted} kostnadsställen${data.deactivated ? `, inaktiverade ${data.deactivated}` : ""}.`,
+        "Synk klar",
       );
       router.refresh();
     } finally {
@@ -138,7 +144,6 @@ export default function AdminClient({
               ) : undefined
             }
           />
-          {syncMsg && <p className="border-b border-border px-6 py-2 text-xs text-muted">{syncMsg}</p>}
           {costCenters.length === 0 ? (
             <p className="px-6 py-10 text-center text-sm text-muted">
               Inga kostnadsställen ännu. Synka från Fortnox för att hämta in dem.

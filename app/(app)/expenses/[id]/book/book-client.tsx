@@ -43,8 +43,8 @@ function defaultRows(expense: Expense | undefined): Row[] {
     expense.allocations.length > 0
       ? expense.allocations.map((a) => ({
           id: uid(),
-          account: ACCOUNT.REPRESENTATION,
-          description: expense.title,
+          account: "",
+          description: "",
           costCenterCode: a.costCenterCode,
           debit: a.amount.toFixed(2),
           credit: "",
@@ -52,23 +52,23 @@ function defaultRows(expense: Expense | undefined): Row[] {
       : [
           {
             id: uid(),
-            account: ACCOUNT.REPRESENTATION,
-            description: expense.title,
+            account: "",
+            description: "",
             costCenterCode: "",
             debit: gross ? gross.toFixed(2) : "",
             credit: "",
           },
         ];
   return [
-    ...debitRows,
     {
       id: uid(),
       account: expense.paymentType === "CARD" ? ACCOUNT.BANK : ACCOUNT.MEMBER_DEBT,
-      description: expense.paymentType === "CARD" ? "Sektionskort" : "Skuld till medlem",
+      description: "",
       costCenterCode: "",
       debit: "",
       credit: gross ? gross.toFixed(2) : "",
     },
+    ...debitRows
   ];
 }
 
@@ -264,15 +264,15 @@ export default function BookExpenseClient({
       <Card>
         <CardHeader title="Konteringsrader" subtitle="Debet och kredit måste vara lika stora." />
         <div className="overflow-x-auto">
-          <table className="w-full min-w-205 border-collapse text-sm">
+          <table className="w-full border-collapse text-sm">
             <thead>
               <tr className="divide-x divide-border border-b border-border bg-surface/40 text-xs text-muted">
-                <th className={cn(headerCell, "w-64")}>Konto</th>
-                <th className={headerCell}>Beskrivning</th>
-                <th className={cn(headerCell, "w-36")}>Kostnadsställe</th>
-                <th className={cn(headerCell, "w-32")}>Debet</th>
-                <th className={cn(headerCell, "w-32")}>Kredit</th>
-                <th className="w-10" />
+                <th className={cn(headerCell, "w-1/10")}>Konto</th>
+                <th className={cn(headerCell, "w-1/5")}>Kostnadsställe</th>
+                <th className={cn(headerCell, "w-1/5")}>Beskrivning</th>
+                <th className={cn(headerCell, "w-1/8")}>Debet</th>
+                <th className={cn(headerCell, "w-1/8")}>Kredit</th>
+                <th className="w-1/15" />
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -292,14 +292,6 @@ export default function BookExpenseClient({
                     </td>
                     <td className="p-0 align-middle">
                       <input
-                        value={r.description}
-                        onChange={(e) => patch(r.id, { description: e.target.value })}
-                        placeholder="Text"
-                        className={cellInput}
-                      />
-                    </td>
-                    <td className="p-0 align-middle">
-                      <input
                         list="cost-centers"
                         value={r.costCenterCode}
                         onChange={(e) => patch(r.id, { costCenterCode: e.target.value })}
@@ -315,6 +307,14 @@ export default function BookExpenseClient({
                           cellInput,
                           r.costCenterCode && !costCenterExists(r.costCenterCode) && "text-danger",
                         )}
+                      />
+                    </td>
+                    <td className="p-0 align-middle">
+                      <input
+                        value={r.description}
+                        onChange={(e) => patch(r.id, { description: e.target.value })}
+                        placeholder="Text"
+                        className={cellInput}
                       />
                     </td>
                     <td className="p-0 align-middle">

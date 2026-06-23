@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardBody } from "@/components/ui/card";
@@ -10,6 +10,8 @@ import { IconCheck } from "@/components/ui/icons";
 import { useTableControls, Pagination, SortableHeader } from "@/components/ui/table-controls";
 import { DateInput } from "@/components/ui/date-input";
 import { useRole } from "@/components/role-context";
+import { useNotify } from "@/components/notifications";
+import { useConfirm } from "@/components/confirm-dialog";
 import { formatDate, formatSEK } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { Expense, ExpenseStatus, FortnoxStatus } from "@/lib/types";
@@ -38,16 +40,27 @@ export default function BookkeepingClient({
   const { role } = useRole();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const notify = useNotify();
+  const confirm = useConfirm();
   const controls = useTableControls();
   const [status, setStatus] = useState<StatusFilter>("all");
   const [exporting, setExporting] = useState<string | null>(null);
-  const [exportError, setExportError] = useState<string | null>(null);
   const [disconnecting, setDisconnecting] = useState(false);
 
   const isAdmin = role === "ADMIN";
   // Result flag set by the OAuth callback redirect (?fortnox=connected|error).
   const connectResult = searchParams.get("fortnox");
   const connectReason = searchParams.get("reason");
+
+  // Surface the OAuth connect result as a notification, then strip the query
+  // params so it doesn't reappear on refresh/navigation.
+  useEffect(() => {
+    if (connectResult === "connected") notify.success("Fortnox anslöts.");
+    else if (connectResult === "error")
+      notify.error(`Anslutningen till Fortnox misslyckades${connectReason ? ` (${connectReason})` : ""}.`);
+    if (connectResult) window.history.replaceState(null, "", "/bookkeeping");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connectResult]);
 
   const base = expenses.filter((e) => BOOKKEEPING_STATUSES.has(e.status));
 
@@ -74,30 +87,38 @@ export default function BookkeepingClient({
 
   async function doExport(id: string) {
     setExporting(id);
-    setExportError(null);
     try {
       const res = await fetch(`/api/expenses/${id}/export`, { method: "POST" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setExportError(`${id}: ${data.error ?? "Export misslyckades"}`);
+        notify.error(`${id}: ${data.error ?? "Export misslyckades"}`);
         return;
       }
       if (data.attachWarning) {
-        setExportError(`${id}: exporterad (${data.label}), men kvittot kunde inte bifogas — ${data.attachWarning}`);
+        notify.info(`${id}: exporterad (${data.label}), men kvittot kunde inte bifogas — ${data.attachWarning}`);
+      } else {
+        notify.success(`${id}: exporterad till Fortnox (${data.label}).`);
       }
       router.refresh();
     } catch {
-      setExportError(`${id}: kunde inte nå servern`);
+      notify.error(`${id}: kunde inte nå servern`);
     } finally {
       setExporting(null);
     }
   }
 
   async function doDisconnect() {
-    if (!confirm("Koppla från Fortnox? Inga fler utlägg kan exporteras förrän du ansluter igen.")) return;
+    const ok = await confirm({
+      title: "Koppla från Fortnox?",
+      message: "Inga fler utlägg kan exporteras förrän du ansluter igen.",
+      confirmLabel: "Koppla från",
+      tone: "danger",
+    });
+    if (!ok) return;
     setDisconnecting(true);
     try {
       await fetch("/api/fortnox", { method: "DELETE" });
+      notify.success("Fortnox frånkopplat.");
       router.refresh();
     } finally {
       setDisconnecting(false);
@@ -110,20 +131,6 @@ export default function BookkeepingClient({
         title="Bokföring"
         description="Kontera attesterade utlägg och exportera till Fortnox."
       />
-
-      {/* Result banner from the OAuth connect redirect */}
-      {connectResult === "connected" && (
-        <Card className="mb-4 border-success/40 bg-success-soft/40">
-          <CardBody className="py-3 text-sm text-success">Fortnox anslöts.</CardBody>
-        </Card>
-      )}
-      {connectResult === "error" && (
-        <Card className="mb-4 border-danger/40 bg-danger-soft/40">
-          <CardBody className="py-3 text-sm text-danger">
-            Anslutningen till Fortnox misslyckades{connectReason ? ` (${connectReason})` : ""}.
-          </CardBody>
-        </Card>
-      )}
 
       {/* Fortnox connection status */}
       <Card className="mb-8">
@@ -190,12 +197,6 @@ export default function BookkeepingClient({
           )}
         </CardBody>
       </Card>
-
-      {exportError && (
-        <Card className="mb-4 border-danger/40 bg-danger-soft/40">
-          <CardBody className="py-3 text-sm text-danger">{exportError}</CardBody>
-        </Card>
-      )}
 
       <Card>
         {/* Filter bar */}
