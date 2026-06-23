@@ -2,16 +2,17 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { PageHeader } from "@/components/page-header";
+import { PageShell } from "@/components/page-shell";
 import { ExpenseList } from "@/components/expense-list";
 import { EmptyState } from "@/components/ui/empty-state";
 import { StatCard } from "@/components/stat-card";
+import { StatRow } from "@/components/stat-row";
 import { Card } from "@/components/ui/card";
 import { StatusPill, Tag } from "@/components/ui/status-pill";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 import { useTableControls, FilterBar, Pagination, SortableHeader } from "@/components/ui/table-controls";
 import { PAYMENT_META } from "@/lib/status";
 import { formatDate, formatSEK } from "@/lib/format";
-import { cn } from "@/lib/utils";
 import type { Expense, Role } from "@/lib/types";
 
 type Tab = "pending" | "attested";
@@ -72,38 +73,25 @@ export function ApprovalsClient({
   const page = controls.paginate(sorted);
 
   return (
-    <>
-      <PageHeader
-        title="Attestera"
-        description="Granska att uppgifterna stämmer och signera utlägget."
+    <PageShell
+      title="Attestera"
+      description="Granska att uppgifterna stämmer och signera utlägget."
+    >
+      <SegmentedControl<Tab>
+        options={[
+          { value: "pending", label: "Väntar", badge: pending.length },
+          { value: "attested", label: "Attesterade" },
+        ]}
+        value={tab}
+        onChange={setTab}
       />
 
-      <div className="mb-6 flex gap-1">
-        {([["pending", "Väntar"], ["attested", "Attesterade"]] as [Tab, string][]).map(([key, label]) => (
-          <button
-            key={key}
-            onClick={() => setTab(key)}
-            className={cn(
-              "rounded-full px-4 py-1.5 text-sm font-medium transition-colors",
-              tab === key ? "bg-accent text-white" : "text-muted hover:text-foreground",
-            )}
-          >
-            {label}
-            {key === "pending" && pending.length > 0 && (
-              <span className="ml-1.5 rounded-full bg-white/20 px-1.5 py-0.5 text-xs tabular-nums">
-                {pending.length}
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
-
       {tab === "pending" && (
-        <>
-          <div className="mb-6 grid grid-cols-2 gap-4 sm:max-w-md">
+        <div className="space-y-6">
+          <StatRow>
             <StatCard label="Väntar på dig" value={String(pending.length)} accent />
             <StatCard label="Summa" value={formatSEK(pendingTotal)} />
-          </div>
+          </StatRow>
 
           {pending.length ? (
             <ExpenseList expenses={pending} />
@@ -113,7 +101,7 @@ export function ApprovalsClient({
               description="Alla inskickade utlägg är hanterade."
             />
           )}
-        </>
+        </div>
       )}
 
       {tab === "attested" && (
@@ -188,6 +176,6 @@ export function ApprovalsClient({
           </Card>
         )
       )}
-    </>
+    </PageShell>
   );
 }

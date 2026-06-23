@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ReceiptViewer } from "@/components/receipt-viewer";
 import { useNotify } from "@/components/notifications";
-import { PageHeader } from "@/components/page-header";
+import { PageShell } from "@/components/page-shell";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody } from "@/components/ui/card";
 import { Field, Input, DateInput } from "@/components/ui/field";
@@ -212,12 +212,12 @@ export default function NewExpenseClient({
   }
 
   return (
-    <div className={cn("mx-auto", step === 0 ? "max-w-2xl" : "max-w-5xl")}>
-      <PageHeader title="Nytt utlägg" description="Ladda upp ett kvitto så fyller vi i resten." />
-
-      <div className="mb-8">
-        <Stepper steps={STEPS} current={step} />
-      </div>
+    <PageShell
+      title="Nytt utlägg"
+      description="Ladda upp ett kvitto så fyller vi i resten."
+      width={step === 0 ? "form" : "content"}
+    >
+      <Stepper steps={STEPS} current={step} />
 
       {/* Hidden file input — used by the dropzone and "Byt kvitto" alike. */}
       <input
@@ -591,7 +591,7 @@ export default function NewExpenseClient({
           Avbryt
         </Link>
       </p>
-    </div>
+    </PageShell>
   );
 }
 

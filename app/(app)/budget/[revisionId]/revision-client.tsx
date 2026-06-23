@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { ButtonLink, Button } from "@/components/ui/button";
 import { useRole } from "@/components/role-context";
 import { useNotify } from "@/components/notifications";
+import { PageHeader } from "@/components/page-header";
 import { effectiveKind, type AccountKind } from "@/lib/budget";
 import { cn } from "@/lib/utils";
 import type { CostCenter } from "@/lib/types";
@@ -215,16 +216,16 @@ export default function BudgetRevisionClient({
 
   return (
     <div>
-      <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{revision.budget.name} · {revision.name}</h1>
-          <p className="mt-1 text-sm text-muted">
+      <PageHeader
+        title={`${revision.budget.name} · ${revision.name}`}
+        description={
+          <>
             {baseline ? `Jämförs mot ${baseName}` : "Ursprunglig revision"}
             {ev.errors.length > 0 && <span className="ml-2 text-warning">· {ev.errors[0]}</span>}
-          </p>
-        </div>
-        <ButtonLink href="/budget" variant="secondary" size="sm">← Alla budgetar</ButtonLink>
-      </div>
+          </>
+        }
+        action={<ButtonLink href="/budget" variant="secondary" size="sm">← Alla budgetar</ButtonLink>}
+      />
 
       <div className="flex gap-4">
         {/* ── Sidebar ──────────────────────────────────────────── */}

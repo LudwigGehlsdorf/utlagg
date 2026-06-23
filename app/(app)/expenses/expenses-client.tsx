@@ -2,24 +2,24 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { PageHeader } from "@/components/page-header";
+import { PageShell } from "@/components/page-shell";
 import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { StatusPill, Tag } from "@/components/ui/status-pill";
 import { IconPlus } from "@/components/ui/icons";
+import { SegmentedControl, type SegOption } from "@/components/ui/segmented-control";
 import { useTableControls, FilterBar, Pagination, SortableHeader } from "@/components/ui/table-controls";
 import { PAYMENT_META } from "@/lib/status";
 import { formatDate, formatSEK } from "@/lib/format";
-import { cn } from "@/lib/utils";
 import type { Expense, Role } from "@/lib/types";
 
 type StatusFilter = "ALL" | "OPEN" | "DONE";
 
-const STATUS_OPTS: { key: StatusFilter; label: string }[] = [
-  { key: "ALL", label: "Alla" },
-  { key: "OPEN", label: "Pågående" },
-  { key: "DONE", label: "Klara" },
+const STATUS_OPTS: SegOption<StatusFilter>[] = [
+  { value: "ALL", label: "Alla" },
+  { value: "OPEN", label: "Pågående" },
+  { value: "DONE", label: "Klara" },
 ];
 
 const DONE_STATUSES = new Set(["EXPORTED"]);
@@ -74,18 +74,16 @@ export function ExpensesClient({
   const page = controls.paginate(sorted);
 
   return (
-    <>
-      <PageHeader
-        title={role === "MEMBER" ? "Mina utlägg" : "Alla utlägg"}
-        description="Spåra status från kvitto till bokföring."
-        action={
-          <ButtonLink href="/expenses/new">
-            <IconPlus className="size-4" />
-            Nytt utlägg
-          </ButtonLink>
-        }
-      />
-
+    <PageShell
+      title={role === "MEMBER" ? "Mina utlägg" : "Alla utlägg"}
+      description="Spåra status från kvitto till bokföring."
+      action={
+        <ButtonLink href="/expenses/new">
+          <IconPlus className="size-4" />
+          Nytt utlägg
+        </ButtonLink>
+      }
+    >
       {base.length === 0 ? (
         <EmptyState
           title="Inga utlägg här"
@@ -108,22 +106,12 @@ export function ExpensesClient({
             dateTo={controls.dateTo}
             onDateToChange={controls.setDateTo}
           >
-            <div className="flex gap-1">
-              {STATUS_OPTS.map((f) => (
-                <button
-                  key={f.key}
-                  onClick={() => { setStatusFilter(f.key); controls.setPage(0); }}
-                  className={cn(
-                    "rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
-                    statusFilter === f.key
-                      ? "bg-accent text-white"
-                      : "text-muted hover:text-foreground",
-                  )}
-                >
-                  {f.label}
-                </button>
-              ))}
-            </div>
+            <SegmentedControl
+              size="sm"
+              options={STATUS_OPTS}
+              value={statusFilter}
+              onChange={(v) => { setStatusFilter(v); controls.setPage(0); }}
+            />
           </FilterBar>
 
           {filtered.length === 0 ? (
@@ -183,6 +171,6 @@ export function ExpensesClient({
           />
         </Card>
       )}
-    </>
+    </PageShell>
   );
 }

@@ -2,10 +2,11 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { PageHeader } from "@/components/page-header";
+import { PageShell } from "@/components/page-shell";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { IconUpload, IconTrash } from "@/components/ui/icons";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 import {
   useTableControls,
   FilterBar,
@@ -107,19 +108,14 @@ export default function BankClient({
   const page = controls.paginate(filtered);
   const totalMatched = bankTransactions.filter((t) => t.matchedExpenseId).length;
 
-  const select =
-    "h-9 rounded-lg border border-border bg-background px-2.5 text-sm focus:border-accent focus:outline-none";
-
   return (
-    <>
-      <PageHeader
-        title="Bank & matchning"
-        description="Ladda upp kontoutdrag (CSV) och se vilka transaktioner som är matchade."
-      />
-
+    <PageShell
+      title="Bank & matchning"
+      description="Ladda upp kontoutdrag (CSV) och se vilka transaktioner som är matchade."
+    >
       {/* CSV upload — bookkeeper/admin only */}
       {canImport && (
-        <Card className="mb-8">
+        <Card>
           <CardBody>
             <input
               ref={fileRef}
@@ -168,18 +164,19 @@ export default function BankClient({
           dateTo={controls.dateTo}
           onDateToChange={controls.setDateTo}
         >
-          <select
+          <SegmentedControl<MatchFilter>
+            size="sm"
+            options={[
+              { value: "all", label: "Alla" },
+              { value: "unmatched", label: "Omatchade" },
+              { value: "matched", label: "Matchade" },
+            ]}
             value={matchFilter}
-            onChange={(e) => {
-              setMatchFilter(e.target.value as MatchFilter);
+            onChange={(v) => {
+              setMatchFilter(v);
               controls.setPage(0);
             }}
-            className={select}
-          >
-            <option value="all">Alla</option>
-            <option value="unmatched">Omatchade</option>
-            <option value="matched">Matchade</option>
-          </select>
+          />
         </FilterBar>
 
         <ul>
@@ -245,6 +242,6 @@ export default function BankClient({
           totalItems={filtered.length}
         />
       </Card>
-    </>
+    </PageShell>
   );
 }

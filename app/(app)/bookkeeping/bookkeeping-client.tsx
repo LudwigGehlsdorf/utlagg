@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { PageHeader } from "@/components/page-header";
+import { PageShell } from "@/components/page-shell";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { StatusPill } from "@/components/ui/status-pill";
@@ -12,8 +12,8 @@ import { DateInput } from "@/components/ui/date-input";
 import { useRole } from "@/components/role-context";
 import { useNotify } from "@/components/notifications";
 import { useConfirm } from "@/components/confirm-dialog";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 import { formatDate, formatSEK } from "@/lib/format";
-import { cn } from "@/lib/utils";
 import type { Expense, ExpenseStatus, FortnoxStatus } from "@/lib/types";
 
 type StatusFilter = "all" | "APPROVED" | "BOOKED" | "EXPORTED";
@@ -126,14 +126,12 @@ export default function BookkeepingClient({
   }
 
   return (
-    <>
-      <PageHeader
-        title="Bokföring"
-        description="Kontera attesterade utlägg och exportera till Fortnox."
-      />
-
+    <PageShell
+      title="Bokföring"
+      description="Kontera attesterade utlägg och exportera till Fortnox."
+    >
       {/* Fortnox connection status */}
-      <Card className="mb-8">
+      <Card>
         <CardBody className="flex items-center justify-between gap-4">
           {!fortnox.configured ? (
             <div className="flex items-center gap-3">
@@ -201,22 +199,12 @@ export default function BookkeepingClient({
       <Card>
         {/* Filter bar */}
         <div className="flex flex-wrap items-center gap-3 border-b border-border px-5 py-3">
-          <div className="flex gap-1">
-            {STATUS_OPTS.map((opt) => (
-              <button
-                key={opt.value}
-                onClick={() => { setStatus(opt.value); controls.setPage(0); }}
-                className={cn(
-                  "rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
-                  status === opt.value
-                    ? "bg-accent text-white"
-                    : "text-muted hover:text-foreground",
-                )}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
+          <SegmentedControl<StatusFilter>
+            size="sm"
+            options={STATUS_OPTS}
+            value={status}
+            onChange={(v) => { setStatus(v); controls.setPage(0); }}
+          />
           <div className="ml-auto flex items-center gap-2">
             <DateInput
               value={controls.dateFrom}
@@ -307,6 +295,6 @@ export default function BookkeepingClient({
           totalItems={filtered.length}
         />
       </Card>
-    </>
+    </PageShell>
   );
 }

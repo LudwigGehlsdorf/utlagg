@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { PageHeader } from "@/components/page-header";
+import { PageShell } from "@/components/page-shell";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { StatusPill, Tag } from "@/components/ui/status-pill";
@@ -178,13 +178,11 @@ export default function ExpenseDetailClient({
   const hasPrimaryAction = canApprove || canBook || canExport || canSubmit;
 
   return (
-    <>
-      <PageHeader
-        title={expense.title}
-        description={`${expense.id} · ${expense.submitterName}`}
-        action={<StatusPill status={expense.status} />}
-      />
-
+    <PageShell
+      title={expense.title}
+      description={`${expense.id} · ${expense.submitterName}`}
+      action={<StatusPill status={expense.status} />}
+    >
       <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
         {/* Left column */}
         <div className="space-y-6">
@@ -518,7 +516,7 @@ export default function ExpenseDetailClient({
           </Card>
         </div>
       </div>
-    </>
+    </PageShell>
   );
 }
 

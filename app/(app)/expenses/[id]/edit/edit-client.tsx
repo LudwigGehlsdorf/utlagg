@@ -2,7 +2,6 @@
 
 import { useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { PageHeader } from "@/components/page-header";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Card, CardBody } from "@/components/ui/card";
 import { Field, Input, DateInput } from "@/components/ui/field";
@@ -12,6 +11,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { IconReceipt, IconUpload } from "@/components/ui/icons";
 import { ReceiptViewer } from "@/components/receipt-viewer";
 import { useNotify } from "@/components/notifications";
+import { PageShell } from "@/components/page-shell";
 import { PAYMENT_META, isEditable } from "@/lib/status";
 import { cn } from "@/lib/utils";
 import type { CostCenter, Expense, PaymentType } from "@/lib/types";
@@ -152,13 +152,12 @@ export default function EditExpenseClient({
   }
 
   return (
-    <div className="mx-auto max-w-2xl">
-      <PageHeader
-        title={`Redigera ${expense.id}`}
-        description="Ändra uppgifterna och spara. Ändringen loggas i historiken."
-        action={<ButtonLink href={`/expenses/${expense.id}`}>Avbryt</ButtonLink>}
-      />
-
+    <PageShell
+      title={`Redigera ${expense.id}`}
+      description="Ändra uppgifterna och spara. Ändringen loggas i historiken."
+      action={<ButtonLink href={`/expenses/${expense.id}`}>Avbryt</ButtonLink>}
+      width="form"
+    >
       <Card>
         <CardBody className="space-y-5">
           <Field label="Beskrivning">
@@ -289,6 +288,6 @@ export default function EditExpenseClient({
           </div>
         </CardBody>
       </Card>
-    </div>
+    </PageShell>
   );
 }

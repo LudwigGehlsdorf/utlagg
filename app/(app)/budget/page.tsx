@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { PageHeader } from "@/components/page-header";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Card, CardBody } from "@/components/ui/card";
 import { useRole } from "@/components/role-context";
 import { useNotify } from "@/components/notifications";
 import { useConfirm } from "@/components/confirm-dialog";
+import { PageShell } from "@/components/page-shell";
 import { cn } from "@/lib/utils";
 
 interface Revision { id: string; name: string; createdAt: string; clonedFromId: string | null }
@@ -93,12 +93,10 @@ export default function BudgetListPage() {
   if (loading) return <div className="py-12 text-center text-sm text-muted">Laddar…</div>;
 
   return (
-    <>
-      <PageHeader
-        title="Budget"
-        description="Hantera sektionens budgetar per år."
-      />
-
+    <PageShell
+      title="Budget"
+      description="Hantera sektionens budgetar per år."
+    >
       {budgets.length === 0 && !isAdmin && (
         <p className="text-sm text-muted">Ingen budget har skapats ännu.</p>
       )}
@@ -181,6 +179,6 @@ export default function BudgetListPage() {
           </Card>
         )}
       </div>
-    </>
+    </PageShell>
   );
 }

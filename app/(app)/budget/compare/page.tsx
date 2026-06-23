@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ButtonLink } from "@/components/ui/button";
-import { PageHeader } from "@/components/page-header";
+import { PageShell } from "@/components/page-shell";
 import { Card } from "@/components/ui/card";
 import { formatSEK } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -82,13 +82,12 @@ export default function BudgetComparePage() {
   const ccByCode = (rev: Revision, code: string) => rev.costCenters.find((c) => c.costCenter.code === code);
 
   return (
-    <div className="mx-auto max-w-4xl">
-      <PageHeader
-        title="Jämför revisioner"
-        description={`${revA.name} vs ${revB.name}`}
-        action={<ButtonLink href="/budget" variant="secondary" size="sm">← Alla budgetar</ButtonLink>}
-      />
-
+    <PageShell
+      title="Jämför revisioner"
+      description={`${revA.name} vs ${revB.name}`}
+      action={<ButtonLink href="/budget" variant="secondary" size="sm">← Alla budgetar</ButtonLink>}
+      width="content"
+    >
       <Card>
         <table className="w-full text-sm">
           <thead>
@@ -197,6 +196,6 @@ export default function BudgetComparePage() {
           </tbody>
         </table>
       </Card>
-    </div>
+    </PageShell>
   );
 }

@@ -2,13 +2,13 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { PageHeader } from "@/components/page-header";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { IconCheck, IconPlus } from "@/components/ui/icons";
 import { useRole } from "@/components/role-context";
 import { ReceiptViewer } from "@/components/receipt-viewer";
+import { PageShell } from "@/components/page-shell";
 import { ACCOUNT, ACCOUNTS, accountName } from "@/lib/accounts";
 import { formatSEK } from "@/lib/format";
 import { DateInput } from "@/components/ui/field";
@@ -212,16 +212,16 @@ export default function BookExpenseClient({
   const amountInput = cn(cellInput, "tabular-nums");
 
   return (
-    <div className={cn("mx-auto", expense.receiptId ? "max-w-7xl" : "max-w-5xl")}>
-      <PageHeader
-        title={mode === "edit" ? `Ändra verifikation · ${expense.id}` : `Bokför ${expense.id}`}
-        description={
-          mode === "edit"
-            ? "Justera konteringsraderna innan utlägget exporteras till Fortnox."
-            : "Skapa verifikation – kontera och balansera debet mot kredit."
-        }
-        action={<ButtonLink href={`/expenses/${expense.id}`}>Avbryt</ButtonLink>}
-      />
+    <PageShell
+      title={mode === "edit" ? `Ändra verifikation · ${expense.id}` : `Bokför ${expense.id}`}
+      description={
+        mode === "edit"
+          ? "Justera konteringsraderna innan utlägget exporteras till Fortnox."
+          : "Skapa verifikation – kontera och balansera debet mot kredit."
+      }
+      action={<ButtonLink href={`/expenses/${expense.id}`}>Avbryt</ButtonLink>}
+      width={expense.receiptId ? "wide" : "content"}
+    >
 
       <div
         className={cn(
@@ -416,6 +416,6 @@ export default function BookExpenseClient({
           </option>
         ))}
       </datalist>
-    </div>
+    </PageShell>
   );
 }

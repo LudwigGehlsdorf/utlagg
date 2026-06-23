@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
-import { PageHeader } from "@/components/page-header";
+import { PageShell } from "@/components/page-shell";
 import { ButtonLink } from "@/components/ui/button";
 import { StatCard } from "@/components/stat-card";
+import { StatRow } from "@/components/stat-row";
 import { ExpenseList } from "@/components/expense-list";
 import { EmptyState } from "@/components/ui/empty-state";
 import { resolveSessionUser } from "@/lib/current-user";
@@ -30,21 +31,19 @@ export default async function DashboardPage() {
   const firstName = user.name.split(" ")[0];
 
   return (
-    <>
-      <PageHeader
-        title={`Hej ${firstName}`}
-        description="Här är en överblick av sektionens ekonomi."
-        action={
-          <ButtonLink href="/expenses/new">
-            <IconPlus className="size-4" />
-            Nytt utlägg
-          </ButtonLink>
-        }
-      />
-
+    <PageShell
+      title={`Hej ${firstName}`}
+      description="Här är en överblick av sektionens ekonomi."
+      action={
+        <ButtonLink href="/expenses/new">
+          <IconPlus className="size-4" />
+          Nytt utlägg
+        </ButtonLink>
+      }
+    >
       {role === "MEMBER" && (
         <Section>
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <StatRow>
             <StatCard label="Mina utlägg" value={String(mine.length)} />
             <StatCard
               label="Väntar på attest"
@@ -59,42 +58,42 @@ export default async function DashboardPage() {
               label="Totalt i år"
               value={formatSEK(mine.reduce((s, e) => s + e.grossAmount, 0))}
             />
-          </div>
+          </StatRow>
           <ListBlock title="Mina senaste utlägg" expenses={mine} />
         </Section>
       )}
 
       {role === "APPROVER" && (
         <Section>
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
+          <StatRow>
             <StatCard label="Att attestera" value={String(pendingApproval.length)} accent />
             <StatCard
               label="Att attestera, belopp"
               value={formatSEK(pendingApproval.reduce((s, e) => s + e.grossAmount, 0))}
             />
             <StatCard label="Mina utlägg" value={String(mine.length)} />
-          </div>
+          </StatRow>
           <ListBlock title="Väntar på din attest" expenses={pendingApproval} />
         </Section>
       )}
 
       {(role === "BOOKKEEPER" || role === "ADMIN") && (
         <Section>
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <StatRow>
             <StatCard label="Att bokföra" value={String(approved.length)} accent />
             <StatCard label="Att exportera" value={String(booked.length)} />
             <StatCard label="Omatchade transaktioner" value={String(unmatched.length)} />
             <StatCard label="Väntar på attest" value={String(pendingApproval.length)} />
-          </div>
+          </StatRow>
           <ListBlock title="Klart för bokföring" expenses={approved} />
         </Section>
       )}
-    </>
+    </PageShell>
   );
 }
 
 function Section({ children }: { children: React.ReactNode }) {
-  return <div className="space-y-8">{children}</div>;
+  return <div className="space-y-6">{children}</div>;
 }
 
 function ListBlock({ title, expenses }: { title: string; expenses: Expense[] }) {

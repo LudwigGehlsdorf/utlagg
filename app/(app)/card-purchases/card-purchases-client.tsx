@@ -2,15 +2,15 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { PageHeader } from "@/components/page-header";
+import { PageShell } from "@/components/page-shell";
 import { Card } from "@/components/ui/card";
 import { ButtonLink } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { IconCard, IconUpload } from "@/components/ui/icons";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 import { useTableControls, FilterBar, Pagination, SortableHeader } from "@/components/ui/table-controls";
 import { useRole } from "@/components/role-context";
 import { formatDate, formatSEK } from "@/lib/format";
-import { cn } from "@/lib/utils";
 import type { BankTransaction, Card as SectionCard } from "@/lib/types";
 
 type StatusFilter = "all" | "unmatched" | "matched";
@@ -70,25 +70,23 @@ export default function CardPurchasesClient({
 
   if (myCards.length === 0) {
     return (
-      <div className="mx-auto max-w-3xl">
-        <PageHeader title="Kortköp" description="Dina köp med sektionskort." />
+      <PageShell title="Kortköp" description="Dina köp med sektionskort." width="content">
         <EmptyState
           title="Du har inget sektionskort"
           description="Kortköp visas här för dig som har ett sektionskort. Hör av dig till kassören om du borde ha ett."
         />
-      </div>
+      </PageShell>
     );
   }
 
   return (
-    <div className="mx-auto max-w-4xl">
-      <PageHeader
-        title="Kortköp"
-        description="Alla köp med ditt sektionskort och om de är redovisade."
-      />
-
+    <PageShell
+      title="Kortköp"
+      description="Alla köp med ditt sektionskort och om de är redovisade."
+      width="content"
+    >
       {unaccountedCount > 0 && (
-        <div className="mb-4 flex items-center gap-2 rounded-xl bg-accent-soft px-4 py-3 text-sm text-accent">
+        <div className="flex items-center gap-2 rounded-xl bg-accent-soft px-4 py-3 text-sm text-accent">
           <IconCard className="size-4 shrink-0" />
           {unaccountedCount} köp utan kvitto · {formatSEK(unaccountedTotal)} totalt. Ladda upp
           kvittot så matchas köpet automatiskt.
@@ -105,25 +103,15 @@ export default function CardPurchasesClient({
           dateTo={controls.dateTo}
           onDateToChange={controls.setDateTo}
         >
-          <div className="flex gap-1">
-            {STATUS_OPTS.map((opt) => (
-              <button
-                key={opt.value}
-                onClick={() => {
-                  setStatus(opt.value);
-                  controls.setPage(0);
-                }}
-                className={cn(
-                  "rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
-                  status === opt.value
-                    ? "bg-accent text-white"
-                    : "text-muted hover:text-foreground",
-                )}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
+          <SegmentedControl<StatusFilter>
+            size="sm"
+            options={STATUS_OPTS}
+            value={status}
+            onChange={(v) => {
+              setStatus(v);
+              controls.setPage(0);
+            }}
+          />
         </FilterBar>
 
         {filtered.length === 0 ? (
@@ -191,6 +179,6 @@ export default function CardPurchasesClient({
           totalItems={filtered.length}
         />
       </Card>
-    </div>
+    </PageShell>
   );
 }

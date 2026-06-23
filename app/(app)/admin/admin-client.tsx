@@ -2,13 +2,14 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { PageHeader } from "@/components/page-header";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
 import { Tag } from "@/components/ui/status-pill";
 import { useRole } from "@/components/role-context";
 import { useNotify } from "@/components/notifications";
+import { PageShell } from "@/components/page-shell";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 import { cn } from "@/lib/utils";
 import type {
   Card as SectionCard,
@@ -106,29 +107,15 @@ export default function AdminClient({
   const approverOptions = users.filter((u) => u.role === "APPROVER" || u.role === "ADMIN");
 
   return (
-    <>
-      <PageHeader
-        title="Inställningar"
-        description="Hantera kostnadsställen, kommittéer, attestanter och behörigheter."
+    <PageShell
+      title="Inställningar"
+      description="Hantera kostnadsställen, kommittéer, attestanter och behörigheter."
+    >
+      <SegmentedControl<Tab>
+        options={TABS.map((t) => ({ value: t.id, label: t.label }))}
+        value={tab}
+        onChange={setTab}
       />
-
-      {/* Tab bar */}
-      <div className="mb-6 flex gap-1 border-b border-border">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={cn(
-              "-mb-px border-b-2 px-4 py-2.5 text-sm font-medium transition-colors",
-              tab === t.id
-                ? "border-accent text-accent"
-                : "border-transparent text-muted hover:text-foreground",
-            )}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
 
       {/* ── Kostnadsställen ─────────────────────────────────────────── */}
       {tab === "cost-centers" && (
@@ -312,6 +299,6 @@ export default function AdminClient({
           </ul>
         </Card>
       )}
-    </>
+    </PageShell>
   );
 }

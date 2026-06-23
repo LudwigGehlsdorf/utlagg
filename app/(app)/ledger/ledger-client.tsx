@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
-import { PageHeader } from "@/components/page-header";
+import { PageShell } from "@/components/page-shell";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -162,14 +162,12 @@ export default function LedgerClient({ fortnox }: { fortnox: FortnoxStatus }) {
   const selectedYear = data?.years.find((y) => y.id === year) ?? null;
 
   return (
-    <>
-      <PageHeader
-        title="Utfall"
-        description="Bokfört utfall per konto och kostnadsställe, hämtat från Fortnox."
-      />
-
+    <PageShell
+      title="Utfall"
+      description="Bokfört utfall per konto och kostnadsställe, hämtat från Fortnox."
+    >
       {/* Sync status */}
-      <Card className="mb-6">
+      <Card>
         <CardBody className="flex flex-wrap items-center justify-between gap-3">
           <div className="text-sm">
             {!fortnox.connected ? (
@@ -193,7 +191,7 @@ export default function LedgerClient({ fortnox }: { fortnox: FortnoxStatus }) {
       </Card>
 
       {/* Filters */}
-      <div className="mb-4 flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <select
           value={year ?? ""}
           onChange={(e) => changeYear(Number(e.target.value))}
@@ -336,6 +334,6 @@ export default function LedgerClient({ fortnox }: { fortnox: FortnoxStatus }) {
           })}
         </div>
       )}
-    </>
+    </PageShell>
   );
 }
