@@ -1,0 +1,37 @@
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/db";
+import { resolveUserId } from "@/lib/current-user";
+
+export const runtime = "nodejs";
+
+async function requireAdmin() {
+  const id = await resolveUserId();
+  if (!id) return false;
+  const u = await prisma.user.findUnique({ where: { id }, select: { role: true } });
+  return u?.role === "ADMIN";
+}
+
+export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const { id } = await ctx.params;
+  if (!await requireAdmin()) return NextResponse.json({ error: "Åtkomst nekad" }, { status: 403 });
+
+  const body = await req.json().catch(() => ({}));
+  const data: Record<string, unknown> = {};
+  if (typeof body.description === "string" && body.description.trim()) data.description = body.description.trim();
+  if (typeof body.expression === "string") data.expression = body.expression.trim();
+  if (typeof body.sortOrder === "number") data.sortOrder = body.sortOrder;
+  // quantity / unitPrice: a non-empty string sets the "antal × á-pris" form;
+  // an empty string clears it (back to the standalone expression).
+  if ("quantity" in body) data.quantity = typeof body.quantity === "string" && body.quantity.trim() ? body.quantity.trim() : null;
+  if ("unitPrice" in body) data.unitPrice = typeof body.unitPrice === "string" && body.unitPrice.trim() ? body.unitPrice.trim() : null;
+
+  const item = await prisma.budgetLineItem.update({ where: { id }, data });
+  return NextResponse.json(item);
+}
+
+export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const { id } = await ctx.params;
+  if (!await requireAdmin()) return NextResponse.json({ error: "Åtkomst nekad" }, { status: 403 });
+  await prisma.budgetLineItem.delete({ where: { id } });
+  return new Response(null, { status: 204 });
+}

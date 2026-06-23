@@ -1,0 +1,511 @@
+// Prisma schema for the utlägg (expense) service.
+// Money is stored as integer öre (minor units) everywhere — no floats —
+// to keep accounting exact and clean for Fortnox export. Divide by 100
+// for display, multiply by 100 on import.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  // Connection URL lives in prisma.config.ts (Prisma 7 moved it out of the schema).
+}
+
+// ── Enums ─────────────────────────────────────────────────────────
+
+enum Role {
+  MEMBER
+  APPROVER
+  BOOKKEEPER
+  ADMIN
+}
+
+// Section position, distinct from the access Role. Drives the (forthcoming)
+// attest policy: ordförande/skattmästare attest broadly, vice skattmästare for
+// non-board, board members for their own committee. Stored now; enforcement TBD.
+enum CommitteePosition {
+  ORDFORANDE // ordförande
+  SKATTMASTARE // skattmästare
+  VICE_SKATTMASTARE // vice skattmästare
+  BOARD // styrelseledamot (board member of a committee)
+}
+
+enum PaymentType {
+  CARD // section card — matched against the purchase before signing
+  REIMBURSEMENT // out-of-pocket — matched against the payout after signing
+}
+
+enum ExpenseStatus {
+  DRAFT
+  PENDING_MATCH
+  PENDING_APPROVAL
+  CHANGES_REQUESTED
+  APPROVED
+  BOOKED
+  EXPORTED
+  REJECTED // kept in DB for historical rows; not reachable from the app
+}
+
+// Structured audit trail. The app renders human-readable (Swedish)
+// labels from the type; the database stays language-neutral and queryable.
+enum ExpenseEventType {
+  CREATED
+  EDITED
+  RECEIPT_UPLOADED
+  MATCHED
+  UNMATCHED
+  SUBMITTED
+  CHANGES_REQUESTED
+  COST_CENTER_APPROVED
+  APPROVED
+  REJECTED
+  BOOKED
+  EXPORTED
+}
+
+// ── Models ────────────────────────────────────────────────────────
+
+model User {
+  id    String @id @default(cuid())
+  email String @unique // Google Workspace identity, @dsek.se
+  name  String
+  role  Role   @default(MEMBER)
+  // Section position (org role), separate from the access Role above.
+  position CommitteePosition?
+
+  // Bank details for REIMBURSEMENT payouts (Swedish clearing + account no.)
+  bankClearingNumber String?
+  bankAccountNumber  String?
+
+  active Boolean @default(true)
+
+  submittedExpenses    Expense[]               @relation("ExpenseSubmitter")
+  approvedCostCenters  CostCenter[]            @relation("CostCenterApprover")
+  allocationApprovals  ExpenseCostAllocation[] @relation("AllocationApprover")
+  uploadedReceipts     Receipt[]               @relation("ReceiptUploader")
+  events               ExpenseEvent[]          @relation("EventActor")
+  createdVerifications Verification[]          @relation("VerificationCreator")
+  heldCards            Card[]                  @relation("CardHolder")
+  budgetRevisions      BudgetRevision[]        @relation("BudgetRevisionAuthor")
+  budgetComments       BudgetComment[]         @relation("BudgetCommentAuthor")
+  fortnoxConnections   FortnoxConnection[]     @relation("FortnoxConnector")
+  ownedCommittees      CommitteeOwner[]        @relation("CommitteeOwner")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([role])
+}
+
+// Kostnadsställe — the org unit an expense is booked against.
+model CostCenter {
+  id   String  @id @default(cuid())
+  code String  @unique // e.g. "NÄRU" or "AKTU01"
+  name String
+  committee String? // grouping label for the budget overview, e.g. "Aktivitetsutskottet"
+  active Boolean @default(true)
+
+  approver   User?   @relation("CostCenterApprover", fields: [approverId], references: [id], onDelete: SetNull)
+  approverId String?
+
+  allocations       ExpenseCostAllocation[]
+  verificationLines VerificationLine[]
+  budgetCostCenters BudgetCostCenter[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Responsible board member for a committee (the `committee` label used to group
+// cost centres). Used by the forthcoming attest policy. Keyed by committee name
+// since committees are currently a string label on CostCenter, not their own model.
+model CommitteeOwner {
+  id        String @id @default(cuid())
+  committee String @unique
+
+  owner   User?   @relation("CommitteeOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  ownerId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Expense {
+  id        String @id @default(cuid())
+  reference String @unique // human-readable, e.g. "U-2026-0042"
+  title     String
+
+  submitter   User   @relation("ExpenseSubmitter", fields: [submitterId], references: [id])
+  submitterId String
+
+  paymentType PaymentType
+  status      ExpenseStatus @default(DRAFT)
+
+  // Receipt / OCR-derived details (editable until signed).
+  merchant     String?
+  purchaseDate DateTime? @db.Date
+  grossAmount  Int? // öre
+  currency     String    @default("SEK")
+
+  // One-to-one match to a bank transaction (the correctness source of truth).
+  matchedTransaction   BankTransaction? @relation(fields: [matchedTransactionId], references: [id], onDelete: SetNull)
+  matchedTransactionId String?          @unique
+
+  allocations  ExpenseCostAllocation[]
+  receipts     Receipt[]
+  events       ExpenseEvent[]
+  verification Verification? // the booked voucher, once status reaches BOOKED
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([submitterId])
+}
+
+// One cost-centre slice of an expense. An expense may span several cost centres
+// with a fixed SEK amount each; all amounts must sum to grossAmount.
+// Each allocation is individually approved by that cost centre's designated approver.
+model ExpenseCostAllocation {
+  id           String     @id @default(cuid())
+  expense      Expense    @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  expenseId    String
+  costCenter   CostCenter @relation(fields: [costCenterId], references: [id])
+  costCenterId String
+  amount       Int        // öre
+  comment      String?    // optional note from the submitter
+
+  approvedBy   User?      @relation("AllocationApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  approvedById String?
+  approvedAt   DateTime?
+
+  @@unique([expenseId, costCenterId])
+  @@index([expenseId])
+}
+
+// An uploaded receipt image/PDF (stored in MinIO) plus its OCR result.
+// Expenses can be revised, so an expense may accumulate several receipts.
+model Receipt {
+  id      String  @id @default(cuid())
+  expense Expense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  expenseId String
+
+  objectKey    String // MinIO object key (the full-size, display-normalised file)
+  thumbnailKey String? // MinIO object key of a small preview (images only)
+  filename     String
+  mimeType     String // the stored file's type (images are normalised to image/jpeg)
+  byteSize     Int?
+
+  ocrText   String? // raw extracted text
+  ocrResult Json? // structured OCR pre-fill (amount, vat, merchant, date…)
+
+  uploadedBy   User?   @relation("ReceiptUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+  uploadedById String?
+
+  createdAt DateTime @default(now())
+
+  @@index([expenseId])
+}
+
+// A row from an imported bank CSV. Negative amount = money out.
+model BankTransaction {
+  id          String   @id @default(cuid())
+  bookedDate  DateTime @db.Date
+  description String
+  amount      Int // öre, negative = outgoing
+  currency    String   @default("SEK")
+
+  // Dedup key for re-imported CSVs (hash of date+amount+description+row).
+  importHash String? @unique
+  importedAt DateTime @default(now())
+
+  // Which section card made this purchase (from the card number in the CSV).
+  card      Card?   @relation(fields: [cardId], references: [id], onDelete: SetNull)
+  cardId    String?
+  cardLast4 String? // raw last 4 from the CSV; resolved to a Card by last4
+
+  matchedExpense Expense? @relation
+
+  @@index([bookedDate])
+  @@index([cardId])
+}
+
+// A physical section card ("sektionskort"). Only some members hold one; the
+// card number's last 4 digits appear in the bank CSV, which lets us attribute a
+// card purchase to its holder so they can account for it. Admin-assigned.
+model Card {
+  id       String  @id @default(cuid())
+  last4    String  @unique
+  holder   User?   @relation("CardHolder", fields: [holderId], references: [id], onDelete: SetNull)
+  holderId String?
+  active   Boolean @default(true)
+
+  transactions BankTransaction[]
+
+  createdAt DateTime @default(now())
+
+  @@index([holderId])
+}
+
+model ExpenseEvent {
+  id        String           @id @default(cuid())
+  expense   Expense          @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  expenseId String
+  type      ExpenseEventType
+
+  actor   User?   @relation("EventActor", fields: [actorId], references: [id], onDelete: SetNull)
+  actorId String?
+
+  comment String? // e.g. reason on CHANGES_REQUESTED / REJECTED
+  diff    Json? // snapshot of what changed on EDITED
+
+  createdAt DateTime @default(now())
+
+  @@index([expenseId])
+  @@index([type])
+}
+
+// A bookkeeping voucher (verifikation) created when an expense is booked.
+// One per expense. Its lines must balance (sum debit == sum credit).
+model Verification {
+  id          String   @id @default(cuid())
+  expense     Expense  @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  expenseId   String   @unique
+  date        DateTime @db.Date
+  description String // verifikationstext
+
+  createdBy   User?   @relation("VerificationCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdById String?
+
+  lines VerificationLine[]
+
+  // Set once the voucher has been exported to Fortnox. The series+number+year
+  // identify the booked verifikation in Fortnox; exportedAt marks success.
+  fortnoxSeries String?
+  fortnoxNumber Int?
+  fortnoxYear   Int?
+  exportedAt    DateTime?
+
+  createdAt DateTime @default(now())
+}
+
+// A stored OAuth2 connection to the org's Fortnox company. There is at most one
+// active connection (the whole section books into a single Fortnox company), so
+// the app treats this table as a singleton. Tokens are refreshed in place: the
+// refresh token is long-lived (~45 days) but ROTATES on every use, so the new
+// pair must be persisted on each refresh.
+model FortnoxConnection {
+  id            String   @id @default(cuid())
+  accessToken   String
+  refreshToken  String
+  expiresAt     DateTime // when the access token expires
+  scopes        String   // space-delimited granted scopes
+  tokenType     String   @default("Bearer")
+  voucherSeries String   @default("A") // default verifikationsserie for exports
+  companyName   String?  // from /3/companyinformation, for display
+
+  connectedBy   User?   @relation("FortnoxConnector", fields: [connectedById], references: [id], onDelete: SetNull)
+  connectedById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ── Fortnox ledger mirror (read side) ─────────────────────────────
+// A local copy of what's actually been bookkept in Fortnox, pulled via the SIE
+// export (one file per financial year). This is the whole general ledger — not
+// just vouchers this app created — so it backs spend reporting (per account per
+// cost centre) and budget-vs-actual. Synced by replacing a whole year at a time
+// (idempotent), so closed years stay stable and the current year just re-pulls.
+
+model FortnoxFinancialYear {
+  id         Int       @id // Fortnox financial-year id (not the calendar year)
+  fromDate   DateTime  @db.Date
+  toDate     DateTime  @db.Date
+  lastSyncAt DateTime?
+
+  vouchers LedgerVoucher[]
+}
+
+model LedgerVoucher {
+  id            String               @id @default(cuid())
+  financialYear Int // FortnoxFinancialYear.id
+  year          FortnoxFinancialYear @relation(fields: [financialYear], references: [id], onDelete: Cascade)
+  series        String // VoucherSeries, e.g. "A"
+  number        Int // VoucherNumber within the series+year
+  date          DateTime             @db.Date // transaction date
+  description   String
+
+  rows       LedgerRow[]
+  importedAt DateTime    @default(now())
+
+  @@unique([financialYear, series, number])
+  @@index([date])
+}
+
+model LedgerRow {
+  id        String        @id @default(cuid())
+  voucher   LedgerVoucher @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+  voucherId String
+
+  account     String // BAS account number, e.g. "6071"
+  accountName String // denormalised from the SIE #KONTO chart
+  // Cost centre (SIE dimension 1). Code matched to an app CostCenter by string;
+  // some Fortnox codes have no app counterpart, so this stays a denormalised
+  // string rather than a FK.
+  costCenterCode String?
+  costCenterName String?
+  project        String?
+  text           String? // SIE transaction text
+
+  debit  Int // öre
+  credit Int // öre
+
+  @@index([account])
+  @@index([costCenterCode])
+  @@index([voucherId])
+}
+
+// ── Budget ────────────────────────────────────────────────────────
+
+// One budget per calendar year. Revisions capture iterative edits.
+enum BudgetAccountKind {
+  INCOME // intäkt
+  COST   // kostnad
+}
+
+model Budget {
+  id        String           @id @default(cuid())
+  year      Int              @unique
+  name      String
+  createdAt DateTime         @default(now())
+  revisions BudgetRevision[]
+
+  // The originally-adopted revision, shown as the comparison column ("2026")
+  // beside the working revision ("2026 REV") in every view.
+  baselineRevision   BudgetRevision? @relation("BudgetBaseline", fields: [baselineRevisionId], references: [id], onDelete: SetNull)
+  baselineRevisionId String?
+}
+
+// A named snapshot of a budget. Always forked from an existing revision
+// (or created fresh for the first revision of a year). Immutable once all
+// cost-center approvers have signed off — for now just name + clone is tracked.
+model BudgetRevision {
+  id           String         @id @default(cuid())
+  budget       Budget         @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  budgetId     String
+  name         String
+  createdBy    User           @relation("BudgetRevisionAuthor", fields: [createdById], references: [id])
+  createdById  String
+  clonedFrom   BudgetRevision?  @relation("RevisionClones", fields: [clonedFromId], references: [id])
+  clonedFromId String?
+  clones       BudgetRevision[] @relation("RevisionClones")
+  createdAt    DateTime         @default(now())
+
+  variables   BudgetVariable[]
+  costCenters BudgetCostCenter[]
+  baselineFor Budget[]         @relation("BudgetBaseline")
+}
+
+// Named global value or expression. Expressions may reference other variables
+// or account totals via account(CC_CODE, ACCT_CODE). Evaluated with
+// fixed-point iteration so cross-cost-center references resolve correctly.
+model BudgetVariable {
+  id         String         @id @default(cuid())
+  revision   BudgetRevision @relation(fields: [revisionId], references: [id], onDelete: Cascade)
+  revisionId String
+  name       String         // identifier, e.g. "MEMBERS"
+  expression String         // e.g. "300", "TICKET_PRICE * MEMBERS", "account(INFU,3010)"
+  sortOrder  Int            @default(0)
+
+  @@unique([revisionId, name])
+  @@index([revisionId])
+}
+
+// A cost center included in a revision. Ordered by sortOrder.
+model BudgetCostCenter {
+  id           String         @id @default(cuid())
+  revision     BudgetRevision @relation(fields: [revisionId], references: [id], onDelete: Cascade)
+  revisionId   String
+  costCenter   CostCenter     @relation(fields: [costCenterId], references: [id])
+  costCenterId String
+  sortOrder    Int            @default(0)
+  accounts     BudgetAccount[]
+
+  @@unique([revisionId, costCenterId])
+  @@index([revisionId])
+}
+
+// A BAS account within a cost center. Line items beneath it must sum to its
+// total; the total is derived — never stored — to stay consistent.
+model BudgetAccount {
+  id                 String           @id @default(cuid())
+  budgetCostCenter   BudgetCostCenter @relation(fields: [budgetCostCenterId], references: [id], onDelete: Cascade)
+  budgetCostCenterId String
+  accountCode        String           // e.g. "3010"
+  accountName        String           // e.g. "Biljettintäkter"
+  sortOrder          Int              @default(0)
+  // Income vs. cost. When null the kind is inferred from the account code
+  // (BAS: 3xxx = income, everything else = cost); set to override.
+  kindOverride       BudgetAccountKind?
+  lineItems          BudgetLineItem[]
+  comments           BudgetComment[]
+
+  @@unique([budgetCostCenterId, accountCode])
+  @@index([budgetCostCenterId])
+}
+
+// One line item beneath an account. Amount is an expression string so it
+// can reference variables (e.g. "MEMBERS * TICKET_PRICE").
+model BudgetLineItem {
+  id          String        @id @default(cuid())
+  account     BudgetAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  accountId   String
+  description String
+  // When both `quantity` and `unitPrice` are set the amount is their product
+  // (the "antal × á-pris" form); otherwise `expression` is used directly.
+  // All three are expression strings, so they may reference variables.
+  quantity    String?       // e.g. "2", "MEMBERS", "PASLAG_OL"
+  unitPrice   String?       // e.g. "350", "TACK_POLICY"
+  expression  String        // e.g. "1500", "MEMBERS * 5"
+  sortOrder   Int           @default(0)
+
+  @@index([accountId])
+}
+
+// Approver comment on a specific account within a revision.
+model BudgetComment {
+  id        String        @id @default(cuid())
+  account   BudgetAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  accountId String
+  author    User          @relation("BudgetCommentAuthor", fields: [authorId], references: [id])
+  authorId  String
+  body      String
+  createdAt DateTime      @default(now())
+
+  @@index([accountId])
+}
+
+// ── One posting row (konteringsrad) ──────────────────────────────
+// One posting row (konteringsrad): an account, an optional cost center, and a
+// debit or credit amount (öre). A row normally has one of debit/credit set.
+model VerificationLine {
+  id             String       @id @default(cuid())
+  verification   Verification @relation(fields: [verificationId], references: [id], onDelete: Cascade)
+  verificationId String
+
+  account     String // BAS account number, e.g. "1930"
+  accountName String // denormalised label at booking time (chart may change)
+  description String?
+
+  costCenter   CostCenter? @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
+  costCenterId String?
+
+  debit     Int @default(0) // öre
+  credit    Int @default(0) // öre
+  sortOrder Int @default(0)
+
+  @@index([verificationId])
+}
