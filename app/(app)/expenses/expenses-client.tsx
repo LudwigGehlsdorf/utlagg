@@ -9,7 +9,8 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { StatusPill, Tag } from "@/components/ui/status-pill";
 import { IconPlus } from "@/components/ui/icons";
 import { SegmentedControl, type SegOption } from "@/components/ui/segmented-control";
-import { useTableControls, FilterBar, Pagination, SortableHeader } from "@/components/ui/table-controls";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { useTableControls, FilterBar, Pagination } from "@/components/ui/table-controls";
 import { PAYMENT_META } from "@/lib/status";
 import { formatDate, formatSEK } from "@/lib/format";
 import type { Expense, Role } from "@/lib/types";
@@ -58,20 +59,45 @@ export function ExpensesClient({
     return true;
   });
 
-  const dir = controls.sortDir === "asc" ? 1 : -1;
-  const sorted = controls.sortKey
-    ? [...filtered].sort((a, b) => {
-        switch (controls.sortKey) {
-          case "date":      return dir * a.purchaseDate.localeCompare(b.purchaseDate);
-          case "title":     return dir * a.title.localeCompare(b.title);
-          case "submitter": return dir * a.submitterName.localeCompare(b.submitterName);
-          case "amount":    return dir * (a.grossAmount - b.grossAmount);
-          default:          return 0;
-        }
-      })
-    : filtered;
-
-  const page = controls.paginate(sorted);
+  const columns: Column<Expense>[] = [
+    {
+      key: "date",
+      header: "Datum",
+      sortValue: (e) => e.purchaseDate,
+      className: "whitespace-nowrap text-muted",
+      cell: (e) => formatDate(e.purchaseDate),
+    },
+    {
+      key: "title",
+      header: "Utlägg",
+      sortValue: (e) => e.title,
+      cell: (e) => (
+        <>
+          <p className="font-medium">{e.title}</p>
+          <p className="mt-0.5 text-xs text-muted">
+            {e.id} · <Tag>{PAYMENT_META[e.paymentType].label}</Tag>
+          </p>
+        </>
+      ),
+    },
+    {
+      key: "submitter",
+      header: "Inlämnad av",
+      hidden: role === "MEMBER",
+      sortValue: (e) => e.submitterName,
+      className: "text-muted",
+      cell: (e) => e.submitterName,
+    },
+    { key: "status", header: "Status", cell: (e) => <StatusPill status={e.status} /> },
+    {
+      key: "amount",
+      header: "Belopp",
+      align: "right",
+      sortValue: (e) => e.grossAmount,
+      className: "whitespace-nowrap font-semibold tabular-nums",
+      cell: (e) => formatSEK(e.grossAmount),
+    },
+  ];
 
   return (
     <PageShell
@@ -114,53 +140,14 @@ export function ExpensesClient({
             />
           </FilterBar>
 
-          {filtered.length === 0 ? (
-            <p className="px-5 py-12 text-center text-sm text-muted">
-              Inga utlägg matchar filtret.
-            </p>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-xs font-medium text-muted">
-                  <SortableHeader sortKey="date" controls={controls} className="px-5 py-3">Datum</SortableHeader>
-                  <SortableHeader sortKey="title" controls={controls} className="px-5 py-3">Utlägg</SortableHeader>
-                  {role !== "MEMBER" && (
-                    <SortableHeader sortKey="submitter" controls={controls} className="px-5 py-3">Inlämnad av</SortableHeader>
-                  )}
-                  <th className="px-5 py-3">Status</th>
-                  <SortableHeader sortKey="amount" controls={controls} className="px-5 py-3 text-right">Belopp</SortableHeader>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {page.map((e) => (
-                  <tr
-                    key={e.id}
-                    onClick={() => router.push(`/expenses/${e.id}`)}
-                    className="cursor-pointer hover:bg-surface/50"
-                  >
-                    <td className="whitespace-nowrap px-5 py-4 text-muted">
-                      {formatDate(e.purchaseDate)}
-                    </td>
-                    <td className="px-5 py-4">
-                      <p className="font-medium">{e.title}</p>
-                      <p className="mt-0.5 text-xs text-muted">
-                        {e.id} · <Tag>{PAYMENT_META[e.paymentType].label}</Tag>
-                      </p>
-                    </td>
-                    {role !== "MEMBER" && (
-                      <td className="px-5 py-4 text-muted">{e.submitterName}</td>
-                    )}
-                    <td className="px-5 py-4">
-                      <StatusPill status={e.status} />
-                    </td>
-                    <td className="whitespace-nowrap px-5 py-4 text-right font-semibold tabular-nums">
-                      {formatSEK(e.grossAmount)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+          <DataTable
+            columns={columns}
+            rows={filtered}
+            controls={controls}
+            rowKey={(e) => e.id}
+            onRowClick={(e) => router.push(`/expenses/${e.id}`)}
+            empty="Inga utlägg matchar filtret."
+          />
 
           <Pagination
             page={controls.page}

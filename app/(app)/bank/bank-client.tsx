@@ -7,6 +7,7 @@ import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { IconUpload, IconTrash } from "@/components/ui/icons";
 import { SegmentedControl } from "@/components/ui/segmented-control";
+import { DataTable, type Column } from "@/components/ui/data-table";
 import {
   useTableControls,
   FilterBar,
@@ -105,8 +106,65 @@ export default function BankClient({
     return true;
   });
 
-  const page = controls.paginate(filtered);
   const totalMatched = bankTransactions.filter((t) => t.matchedExpenseId).length;
+
+  const columns: Column<BankTransaction>[] = [
+    {
+      key: "description",
+      header: "Transaktion",
+      cell: (t) => (
+        <>
+          <p className="truncate text-sm font-medium">{t.description}</p>
+          <p className="mt-0.5 text-xs text-muted">
+            {formatDate(t.bookedDate)}
+            {t.cardHolderName && <> · <span>{t.cardHolderName}</span></>}
+            {t.cardLast4 && !t.cardHolderName && (
+              <> · <span className="tabular-nums">····{t.cardLast4}</span></>
+            )}
+          </p>
+        </>
+      ),
+    },
+    {
+      key: "status",
+      header: "Status",
+      cell: (t) => (
+        <span
+          className={cn(
+            "inline-block rounded-full px-2.5 py-1 text-xs font-medium",
+            t.matchedExpenseId ? "bg-success-soft text-success" : "bg-surface text-muted",
+          )}
+        >
+          {t.matchedExpenseId ? `Matchad · ${t.matchedExpenseId}` : "Omatchad"}
+        </span>
+      ),
+    },
+    {
+      key: "amount",
+      header: "Belopp",
+      align: "right",
+      className: "whitespace-nowrap font-semibold tabular-nums",
+      cell: (t) => (
+        <span className={cn(t.amount > 0 && "text-success")}>{formatSEK(t.amount)}</span>
+      ),
+    },
+    {
+      key: "actions",
+      header: "",
+      align: "right",
+      hidden: !canImport,
+      cell: (t) => (
+        <button
+          onClick={() => deleteTxn(t.id)}
+          disabled={deleting === t.id}
+          title={t.matchedExpenseId ? "Matchad — ta bort matchningen först" : "Ta bort transaktion"}
+          className="rounded-lg p-1.5 text-muted transition-colors hover:bg-danger/10 hover:text-danger disabled:pointer-events-none disabled:opacity-40"
+        >
+          <IconTrash className="size-4" />
+        </button>
+      ),
+    },
+  ];
 
   return (
     <PageShell
@@ -179,60 +237,13 @@ export default function BankClient({
           />
         </FilterBar>
 
-        <ul>
-          {page.map((t) => (
-            <li
-              key={t.id}
-              className="flex items-center gap-4 border-b border-border px-6 py-3.5 last:border-0"
-            >
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium">{t.description}</p>
-                <p className="mt-0.5 text-xs text-muted">
-                  {formatDate(t.bookedDate)}
-                  {t.cardHolderName && (
-                    <> · <span>{t.cardHolderName}</span></>
-                  )}
-                  {t.cardLast4 && !t.cardHolderName && (
-                    <> · <span className="tabular-nums">····{t.cardLast4}</span></>
-                  )}
-                </p>
-              </div>
-              <span
-                className={cn(
-                  "shrink-0 rounded-full px-2.5 py-1 text-xs font-medium",
-                  t.matchedExpenseId
-                    ? "bg-success-soft text-success"
-                    : "bg-surface text-muted",
-                )}
-              >
-                {t.matchedExpenseId ? `Matchad · ${t.matchedExpenseId}` : "Omatchad"}
-              </span>
-              <p
-                className={cn(
-                  "w-28 shrink-0 text-right text-sm font-semibold tabular-nums",
-                  t.amount > 0 && "text-success",
-                )}
-              >
-                {formatSEK(t.amount)}
-              </p>
-              {canImport && (
-                <button
-                  onClick={() => deleteTxn(t.id)}
-                  disabled={deleting === t.id}
-                  title={t.matchedExpenseId ? "Matchad — ta bort matchningen först" : "Ta bort transaktion"}
-                  className="shrink-0 rounded-lg p-1.5 text-muted transition-colors hover:bg-danger/10 hover:text-danger disabled:pointer-events-none disabled:opacity-40"
-                >
-                  <IconTrash className="size-4" />
-                </button>
-              )}
-            </li>
-          ))}
-          {page.length === 0 && (
-            <li className="px-6 py-10 text-center text-sm text-muted">
-              Inga transaktioner matchar filtret
-            </li>
-          )}
-        </ul>
+        <DataTable
+          columns={columns}
+          rows={filtered}
+          controls={controls}
+          rowKey={(t) => t.id}
+          empty="Inga transaktioner matchar filtret."
+        />
 
         <Pagination
           page={controls.page}

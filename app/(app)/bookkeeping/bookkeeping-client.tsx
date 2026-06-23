@@ -7,7 +7,8 @@ import { Card, CardBody } from "@/components/ui/card";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { StatusPill } from "@/components/ui/status-pill";
 import { IconCheck } from "@/components/ui/icons";
-import { useTableControls, Pagination, SortableHeader } from "@/components/ui/table-controls";
+import { useTableControls, Pagination } from "@/components/ui/table-controls";
+import { DataTable, type Column } from "@/components/ui/data-table";
 import { DateInput } from "@/components/ui/date-input";
 import { useRole } from "@/components/role-context";
 import { useNotify } from "@/components/notifications";
@@ -71,19 +72,69 @@ export default function BookkeepingClient({
     return true;
   });
 
-  const dir = controls.sortDir === "asc" ? 1 : -1;
-  const sorted = controls.sortKey
-    ? [...filtered].sort((a, b) => {
-        switch (controls.sortKey) {
-          case "date":      return dir * a.purchaseDate.localeCompare(b.purchaseDate);
-          case "reference": return dir * a.id.localeCompare(b.id);
-          case "submitter": return dir * a.submitterName.localeCompare(b.submitterName);
-          case "amount":    return dir * (a.grossAmount - b.grossAmount);
-          default:          return 0;
-        }
-      })
-    : filtered;
-  const page = controls.paginate(sorted);
+  const columns: Column<Expense>[] = [
+    {
+      key: "date",
+      header: "Datum",
+      sortValue: (e) => e.purchaseDate,
+      className: "whitespace-nowrap text-muted",
+      cell: (e) => formatDate(e.purchaseDate),
+    },
+    {
+      key: "reference",
+      header: "Utlägg",
+      sortValue: (e) => e.id,
+      cell: (e) => (
+        <>
+          <p className="font-medium">{e.title}</p>
+          <p className="text-xs text-muted">{e.id}</p>
+        </>
+      ),
+    },
+    {
+      key: "submitter",
+      header: "Inlämnad av",
+      sortValue: (e) => e.submitterName,
+      className: "text-muted",
+      cell: (e) => e.submitterName,
+    },
+    {
+      key: "amount",
+      header: "Belopp",
+      align: "right",
+      sortValue: (e) => e.grossAmount,
+      className: "whitespace-nowrap font-semibold tabular-nums",
+      cell: (e) => formatSEK(e.grossAmount),
+    },
+    { key: "status", header: "Status", cell: (e) => <StatusPill status={e.status} /> },
+    {
+      key: "actions",
+      header: "",
+      align: "right",
+      cell: (e) => (
+        <div onClick={(ev) => ev.stopPropagation()}>
+          {e.status === "APPROVED" && (
+            <ButtonLink href={`/expenses/${e.id}/book`} size="sm">
+              Bokför
+            </ButtonLink>
+          )}
+          {e.status === "BOOKED" && (
+            <Button
+              size="sm"
+              disabled={exporting === e.id || !fortnox.connected}
+              title={fortnox.connected ? undefined : "Anslut Fortnox först"}
+              onClick={() => doExport(e.id)}
+            >
+              {exporting === e.id ? "Exporterar…" : "Exportera"}
+            </Button>
+          )}
+          {e.status === "EXPORTED" && e.verification?.fortnoxLabel && (
+            <span className="text-xs text-muted">Verifikat {e.verification.fortnoxLabel}</span>
+          )}
+        </div>
+      ),
+    },
+  ];
 
   async function doExport(id: string) {
     setExporting(id);
@@ -222,70 +273,14 @@ export default function BookkeepingClient({
           </div>
         </div>
 
-        {filtered.length === 0 ? (
-          <p className="px-5 py-12 text-center text-sm text-muted">
-            Inga utlägg matchar filtret.
-          </p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs font-medium text-muted">
-                <SortableHeader sortKey="date" controls={controls} className="px-5 py-3">Datum</SortableHeader>
-                <SortableHeader sortKey="reference" controls={controls} className="px-5 py-3">Utlägg</SortableHeader>
-                <SortableHeader sortKey="submitter" controls={controls} className="px-5 py-3">Inlämnad av</SortableHeader>
-                <SortableHeader sortKey="amount" controls={controls} className="px-5 py-3 text-right">Belopp</SortableHeader>
-                <th className="px-5 py-3">Status</th>
-                <th className="px-5 py-3" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {page.map((e) => (
-                <tr
-                  key={e.id}
-                  onClick={() => router.push(`/expenses/${e.id}`)}
-                  className="cursor-pointer hover:bg-surface/50"
-                >
-                  <td className="whitespace-nowrap px-5 py-4 text-muted">
-                    {formatDate(e.purchaseDate)}
-                  </td>
-                  <td className="px-5 py-4">
-                    <p className="font-medium">{e.title}</p>
-                    <p className="text-xs text-muted">{e.id}</p>
-                  </td>
-                  <td className="px-5 py-4 text-muted">{e.submitterName}</td>
-                  <td className="whitespace-nowrap px-5 py-4 text-right font-semibold tabular-nums">
-                    {formatSEK(e.grossAmount)}
-                  </td>
-                  <td className="px-5 py-4">
-                    <StatusPill status={e.status} />
-                  </td>
-                  <td className="px-5 py-4 text-right" onClick={(ev) => ev.stopPropagation()}>
-                    {e.status === "APPROVED" && (
-                      <ButtonLink href={`/expenses/${e.id}/book`} size="sm">
-                        Bokför
-                      </ButtonLink>
-                    )}
-                    {e.status === "BOOKED" && (
-                      <Button
-                        size="sm"
-                        disabled={exporting === e.id || !fortnox.connected}
-                        title={fortnox.connected ? undefined : "Anslut Fortnox först"}
-                        onClick={() => doExport(e.id)}
-                      >
-                        {exporting === e.id ? "Exporterar…" : "Exportera"}
-                      </Button>
-                    )}
-                    {e.status === "EXPORTED" && e.verification?.fortnoxLabel && (
-                      <span className="text-xs text-muted">
-                        Verifikat {e.verification.fortnoxLabel}
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+        <DataTable
+          columns={columns}
+          rows={filtered}
+          controls={controls}
+          rowKey={(e) => e.id}
+          onRowClick={(e) => router.push(`/expenses/${e.id}`)}
+          empty="Inga utlägg matchar filtret."
+        />
 
         <Pagination
           page={controls.page}

@@ -8,7 +8,8 @@ import { ButtonLink } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { IconCard, IconUpload } from "@/components/ui/icons";
 import { SegmentedControl } from "@/components/ui/segmented-control";
-import { useTableControls, FilterBar, Pagination, SortableHeader } from "@/components/ui/table-controls";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { useTableControls, FilterBar, Pagination } from "@/components/ui/table-controls";
 import { useRole } from "@/components/role-context";
 import { formatDate, formatSEK } from "@/lib/format";
 import type { BankTransaction, Card as SectionCard } from "@/lib/types";
@@ -54,19 +55,65 @@ export default function CardPurchasesClient({
     return true;
   });
 
-  const dir = controls.sortDir === "asc" ? 1 : -1;
-  const sorted = controls.sortKey
-    ? [...filtered].sort((a, b) => {
-        switch (controls.sortKey) {
-          case "date":        return dir * a.bookedDate.localeCompare(b.bookedDate);
-          case "description": return dir * a.description.localeCompare(b.description);
-          case "amount":      return dir * (a.amount - b.amount);
-          case "matched":     return dir * (a.matchedExpenseId ?? "").localeCompare(b.matchedExpenseId ?? "");
-          default:            return 0;
-        }
-      })
-    : filtered;
-  const page = controls.paginate(sorted);
+  const columns: Column<BankTransaction>[] = [
+    {
+      key: "date",
+      header: "Datum",
+      sortValue: (t) => t.bookedDate,
+      className: "whitespace-nowrap text-muted",
+      cell: (t) => formatDate(t.bookedDate),
+    },
+    {
+      key: "description",
+      header: "Butik",
+      sortValue: (t) => t.description,
+      className: "font-medium",
+      cell: (t) => t.description,
+    },
+    {
+      key: "card",
+      header: "Kort",
+      hidden: !showCardCol,
+      className: "text-muted",
+      cell: (t) => (t.cardLast4 ? `····${t.cardLast4}` : "–"),
+    },
+    {
+      key: "amount",
+      header: "Belopp",
+      align: "right",
+      sortValue: (t) => t.amount,
+      className: "whitespace-nowrap font-semibold tabular-nums",
+      cell: (t) => formatSEK(t.amount),
+    },
+    {
+      key: "matched",
+      header: "Utlägg",
+      sortValue: (t) => t.matchedExpenseId ?? "",
+      cell: (t) =>
+        t.matchedExpenseId ? (
+          <Link
+            href={`/expenses/${t.matchedExpenseId}`}
+            className="font-medium text-accent hover:underline"
+          >
+            {t.matchedExpenseId}
+          </Link>
+        ) : (
+          <span className="text-muted">–</span>
+        ),
+    },
+    {
+      key: "actions",
+      header: "",
+      align: "right",
+      cell: (t) =>
+        !t.matchedExpenseId && (
+          <ButtonLink href={`/expenses/new?txn=${t.id}`} size="sm">
+            <IconUpload className="size-4" />
+            Redovisa
+          </ButtonLink>
+        ),
+    },
+  ];
 
   if (myCards.length === 0) {
     return (
@@ -114,62 +161,13 @@ export default function CardPurchasesClient({
           />
         </FilterBar>
 
-        {filtered.length === 0 ? (
-          <p className="px-5 py-12 text-center text-sm text-muted">
-            Inga köp matchar filtret.
-          </p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs font-medium text-muted">
-                <SortableHeader sortKey="date" controls={controls} className="px-5 py-3">Datum</SortableHeader>
-                <SortableHeader sortKey="description" controls={controls} className="px-5 py-3">Butik</SortableHeader>
-                {showCardCol && <th className="px-5 py-3">Kort</th>}
-                <SortableHeader sortKey="amount" controls={controls} className="px-5 py-3 text-right">Belopp</SortableHeader>
-                <SortableHeader sortKey="matched" controls={controls} className="px-5 py-3">Utlägg</SortableHeader>
-                <th className="px-5 py-3" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {page.map((t) => (
-                <tr key={t.id} className="hover:bg-surface/50">
-                  <td className="whitespace-nowrap px-5 py-4 text-muted">
-                    {formatDate(t.bookedDate)}
-                  </td>
-                  <td className="px-5 py-4 font-medium">{t.description}</td>
-                  {showCardCol && (
-                    <td className="px-5 py-4 text-muted">
-                      {t.cardLast4 ? `····${t.cardLast4}` : "–"}
-                    </td>
-                  )}
-                  <td className="whitespace-nowrap px-5 py-4 text-right font-semibold tabular-nums">
-                    {formatSEK(t.amount)}
-                  </td>
-                  <td className="px-5 py-4">
-                    {t.matchedExpenseId ? (
-                      <Link
-                        href={`/expenses/${t.matchedExpenseId}`}
-                        className="font-medium text-accent hover:underline"
-                      >
-                        {t.matchedExpenseId}
-                      </Link>
-                    ) : (
-                      <span className="text-muted">–</span>
-                    )}
-                  </td>
-                  <td className="px-5 py-4 text-right">
-                    {!t.matchedExpenseId && (
-                      <ButtonLink href={`/expenses/new?txn=${t.id}`} size="sm">
-                        <IconUpload className="size-4" />
-                        Redovisa
-                      </ButtonLink>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+        <DataTable
+          columns={columns}
+          rows={filtered}
+          controls={controls}
+          rowKey={(t) => t.id}
+          empty="Inga köp matchar filtret."
+        />
 
         <Pagination
           page={controls.page}
