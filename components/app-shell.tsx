@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { useRole } from "./role-context";
 import { NotificationBanners } from "./notifications";
+import { ThemeToggle } from "./theme-toggle";
 import { Avatar } from "./ui/avatar";
 import {
   IconBank,
@@ -16,6 +17,7 @@ import {
   IconGrid,
   IconPlus,
   IconReceipt,
+  IconUser,
 } from "./ui/icons";
 import type { Role } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -28,19 +30,45 @@ type NavItem = {
   cardHolderOnly?: boolean; // only shown to members who hold a section card
 };
 
+type NavGroup = {
+  label: string;
+  items: NavItem[];
+};
+
 const ALL: Role[] = ["MEMBER", "APPROVER", "BOOKKEEPER", "ADMIN"];
 
-const NAV: NavItem[] = [
-  { href: "/dashboard", label: "Översikt", icon: IconGrid, roles: ALL },
-  { href: "/expenses", label: "Utlägg", icon: IconReceipt, roles: ALL },
-  { href: "/expenses/new", label: "Nytt utlägg", icon: IconPlus, roles: ALL },
-  { href: "/card-purchases", label: "Kortköp", icon: IconCard, roles: ALL, cardHolderOnly: true },
-  { href: "/approvals", label: "Att attestera", icon: IconCheck, roles: ["APPROVER", "ADMIN"] },
-  { href: "/budget", label: "Budget", icon: IconChart, roles: ["APPROVER", "BOOKKEEPER", "ADMIN"] },
-  { href: "/ledger", label: "Utfall", icon: IconChart, roles: ["APPROVER", "BOOKKEEPER", "ADMIN"] },
-  { href: "/bookkeeping", label: "Bokföring", icon: IconBook, roles: ["BOOKKEEPER", "ADMIN"] },
-  { href: "/bank", label: "Bank & matchning", icon: IconBank, roles: ["BOOKKEEPER", "ADMIN"] },
-  { href: "/admin", label: "Inställningar", icon: IconGear, roles: ["ADMIN"] },
+const NAV_GROUPS: NavGroup[] = [
+  {
+    label: "Mina utlägg",
+    items: [
+      { href: "/dashboard", label: "Översikt", icon: IconGrid, roles: ALL },
+      { href: "/expenses", label: "Utlägg", icon: IconReceipt, roles: ALL },
+      { href: "/expenses/new", label: "Nytt utlägg", icon: IconPlus, roles: ALL },
+      { href: "/card-purchases", label: "Kortköp", icon: IconCard, roles: ALL, cardHolderOnly: true },
+      { href: "/profile", label: "Min profil", icon: IconUser, roles: ALL },
+    ],
+  },
+  {
+    label: "Attest & budget",
+    items: [
+      { href: "/approvals", label: "Att attestera", icon: IconCheck, roles: ["APPROVER", "ADMIN"] },
+      { href: "/budget", label: "Budget", icon: IconChart, roles: ["APPROVER", "BOOKKEEPER", "ADMIN"] },
+      { href: "/ledger", label: "Utfall", icon: IconChart, roles: ["APPROVER", "BOOKKEEPER", "ADMIN"] },
+    ],
+  },
+  {
+    label: "Bokföring",
+    items: [
+      { href: "/bookkeeping", label: "Bokföring", icon: IconBook, roles: ["BOOKKEEPER", "ADMIN"] },
+      { href: "/bank", label: "Bank & matchning", icon: IconBank, roles: ["BOOKKEEPER", "ADMIN"] },
+    ],
+  },
+  {
+    label: "Administration",
+    items: [
+      { href: "/admin", label: "Inställningar", icon: IconGear, roles: ["ADMIN"] },
+    ],
+  },
 ];
 
 const ROLE_LABELS: Record<Role, string> = {
@@ -59,9 +87,12 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const { role, user } = useRole();
-  const items = NAV.filter(
-    (i) => i.roles.includes(role) && (!i.cardHolderOnly || holdsCard),
-  );
+  const groups = NAV_GROUPS.map((group) => ({
+    ...group,
+    items: group.items.filter(
+      (i) => i.roles.includes(role) && (!i.cardHolderOnly || holdsCard),
+    ),
+  })).filter((group) => group.items.length > 0);
 
   return (
     <div className="flex min-h-screen">
@@ -75,30 +106,37 @@ export function AppShell({
           </div>
         </div>
 
-        <nav className="flex flex-1 flex-col gap-0.5 px-3 py-2">
-          {items.map((item) => {
-            const active =
-              pathname === item.href ||
-              (item.href !== "/expenses/new" &&
-                item.href !== "/dashboard" &&
-                pathname.startsWith(item.href));
-            const Icon = item.icon;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-colors",
-                  active
-                    ? "bg-accent-soft text-accent"
-                    : "text-foreground hover:bg-surface",
-                )}
-              >
-                <Icon className="size-[18px]" />
-                {item.label}
-              </Link>
-            );
-          })}
+        <nav className="flex flex-1 flex-col gap-4 px-3 py-2">
+          {groups.map((group) => (
+            <div key={group.label} className="flex flex-col gap-0.5">
+              <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted">
+                {group.label}
+              </p>
+              {group.items.map((item) => {
+                const active =
+                  pathname === item.href ||
+                  (item.href !== "/expenses/new" &&
+                    item.href !== "/dashboard" &&
+                    pathname.startsWith(item.href));
+                const Icon = item.icon;
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={cn(
+                      "flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-colors",
+                      active
+                        ? "accent-gradient text-white shadow-sm"
+                        : "text-foreground hover:bg-surface",
+                    )}
+                  >
+                    <Icon className="size-[18px]" />
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
         </nav>
       </aside>
 
@@ -113,6 +151,7 @@ export function AppShell({
               <p className="text-xs text-muted">{ROLE_LABELS[role]}</p>
             </div>
             <Avatar initials={user.initials} />
+            <ThemeToggle />
             <button
               onClick={() => signOut({ callbackUrl: "/login" })}
               className="h-9 rounded-full border border-border bg-background px-4 text-sm font-medium transition-colors hover:bg-surface"
@@ -122,7 +161,13 @@ export function AppShell({
           </div>
         </header>
 
-        <main className="mx-auto w-full max-w-7xl flex-1 px-5 py-8 md:px-8">
+        <main
+          className={cn(
+            "mx-auto w-full flex-1 px-5 py-8 md:px-8",
+            // The budget sheets need more room; everything else stays centered.
+            pathname.startsWith("/budget") ? "max-w-[1600px]" : "max-w-7xl",
+          )}
+        >
           <NotificationBanners />
           {children}
         </main>

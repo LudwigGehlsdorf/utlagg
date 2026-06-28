@@ -25,6 +25,19 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   if ("quantity" in body) data.quantity = typeof body.quantity === "string" && body.quantity.trim() ? body.quantity.trim() : null;
   if ("unitPrice" in body) data.unitPrice = typeof body.unitPrice === "string" && body.unitPrice.trim() ? body.unitPrice.trim() : null;
 
+  // columnValues: { [columnId]: string } — merged into the line's `values` JSON
+  // (empty string clears that column's cell).
+  if (body.columnValues && typeof body.columnValues === "object") {
+    const cur = await prisma.budgetLineItem.findUnique({ where: { id }, select: { values: true } });
+    const merged: Record<string, string> = { ...((cur?.values as Record<string, string>) ?? {}) };
+    for (const [k, v] of Object.entries(body.columnValues as Record<string, unknown>)) {
+      if (typeof v !== "string") continue;
+      if (v.trim() === "") delete merged[k];
+      else merged[k] = v.trim();
+    }
+    data.values = merged;
+  }
+
   const item = await prisma.budgetLineItem.update({ where: { id }, data });
   return NextResponse.json(item);
 }

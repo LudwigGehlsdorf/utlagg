@@ -387,6 +387,25 @@ model Budget {
   // beside the working revision ("2026 REV") in every view.
   baselineRevision   BudgetRevision? @relation("BudgetBaseline", fields: [baselineRevisionId], references: [id], onDelete: SetNull)
   baselineRevisionId String?
+
+  // User-defined extra columns, shared across every revision of the budget.
+  columns BudgetColumn[]
+}
+
+enum BudgetColumnKind {
+  TEXT   // free-form string
+  NUMBER // literal/formula, part of the A1 grid and referenceable
+}
+
+model BudgetColumn {
+  id        String           @id @default(cuid())
+  budget    Budget           @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  budgetId  String
+  name      String
+  kind      BudgetColumnKind @default(TEXT)
+  sortOrder Int              @default(0) // position among columns (Belopp pinned last)
+
+  @@index([budgetId])
 }
 
 // A named snapshot of a budget. Always forked from an existing revision
@@ -471,6 +490,9 @@ model BudgetLineItem {
   unitPrice   String?       // e.g. "350", "TACK_POLICY"
   expression  String        // e.g. "1500", "MEMBERS * 5"
   sortOrder   Int           @default(0)
+  // Per-line values for user-defined BudgetColumns: { [columnId]: string }.
+  // NUMBER columns store a literal/formula string; TEXT columns store raw text.
+  values      Json          @default("{}")
 
   @@index([accountId])
 }

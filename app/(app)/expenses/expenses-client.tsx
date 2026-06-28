@@ -7,7 +7,7 @@ import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { StatusPill, Tag } from "@/components/ui/status-pill";
-import { IconPlus } from "@/components/ui/icons";
+import { IconPlus, IconCheck } from "@/components/ui/icons";
 import { SegmentedControl, type SegOption } from "@/components/ui/segmented-control";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { useTableControls, FilterBar, Pagination } from "@/components/ui/table-controls";
@@ -21,6 +21,13 @@ const STATUS_OPTS: SegOption<StatusFilter>[] = [
   { value: "ALL", label: "Alla" },
   { value: "OPEN", label: "Pågående" },
   { value: "DONE", label: "Klara" },
+];
+
+type ScopeFilter = "MINE" | "ALL";
+
+const SCOPE_OPTS: SegOption<ScopeFilter>[] = [
+  { value: "MINE", label: "Mina" },
+  { value: "ALL", label: "Alla" },
 ];
 
 const DONE_STATUSES = new Set(["EXPORTED"]);
@@ -38,10 +45,14 @@ export function ExpensesClient({
   const controls = useTableControls();
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
 
-  const base =
-    role === "MEMBER"
-      ? allExpenses.filter((e) => e.submitterName === userName)
-      : allExpenses;
+  // Kassör/admin can switch between their own and all utlägg (default: their own).
+  const canToggleScope = role === "BOOKKEEPER" || role === "ADMIN";
+  const [scope, setScope] = useState<ScopeFilter>("MINE");
+  const showOwnOnly = role === "MEMBER" || (canToggleScope && scope === "MINE");
+
+  const base = showOwnOnly
+    ? allExpenses.filter((e) => e.submitterName === userName)
+    : allExpenses;
 
   const filtered = base.filter((e) => {
     if (statusFilter === "OPEN" && DONE_STATUSES.has(e.status)) return false;
@@ -83,12 +94,51 @@ export function ExpensesClient({
     {
       key: "submitter",
       header: "Inlämnad av",
-      hidden: role === "MEMBER",
+      hidden: showOwnOnly,
       sortValue: (e) => e.submitterName,
       className: "text-muted",
       cell: (e) => e.submitterName,
     },
     { key: "status", header: "Status", cell: (e) => <StatusPill status={e.status} /> },
+    {
+      key: "attest",
+      header: "Attest",
+      cell: (e) =>
+        e.allocations.length === 0 ? (
+          <span className="text-muted">—</span>
+        ) : (
+          <div className="space-y-0.5">
+            {e.allocations.map((a) => {
+              const attested = !!a.approvedById;
+              return (
+                <div
+                  key={a.id}
+                  className="flex items-center gap-1.5 whitespace-nowrap text-xs"
+                  title={
+                    attested
+                      ? `Attesterad av ${a.approvedByName ?? a.approverName}${a.approvedAt ? ` ${formatDate(a.approvedAt)}` : ""}`
+                      : `Väntar på attest av ${a.approverName || "—"}`
+                  }
+                >
+                  <span className="flex size-3.5 shrink-0 items-center justify-center">
+                    {attested ? (
+                      <IconCheck className="size-3.5 text-success" />
+                    ) : (
+                      <span className="size-1.5 rounded-full bg-muted/40" />
+                    )}
+                  </span>
+                  <span className={attested ? "font-medium" : "text-muted"}>
+                    {a.approverName || "Ej tilldelad"}
+                  </span>
+                  {e.allocations.length > 1 && (
+                    <span className="text-muted/60">{a.costCenterCode}</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ),
+    },
     {
       key: "amount",
       header: "Belopp",
@@ -101,13 +151,22 @@ export function ExpensesClient({
 
   return (
     <PageShell
-      title={role === "MEMBER" ? "Mina utlägg" : "Alla utlägg"}
+      title={showOwnOnly ? "Mina utlägg" : "Alla utlägg"}
       description="Spåra status från kvitto till bokföring."
       action={
-        <ButtonLink href="/expenses/new">
-          <IconPlus className="size-4" />
-          Nytt utlägg
-        </ButtonLink>
+        <div className="flex items-center gap-3">
+          {canToggleScope && (
+            <SegmentedControl
+              options={SCOPE_OPTS}
+              value={scope}
+              onChange={(v) => { setScope(v); controls.setPage(0); }}
+            />
+          )}
+          <ButtonLink href="/expenses/new">
+            <IconPlus className="size-4" />
+            Nytt utlägg
+          </ButtonLink>
+        </div>
       }
     >
       {base.length === 0 ? (

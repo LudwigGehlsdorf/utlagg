@@ -1,22 +1,29 @@
 // Expression evaluator for budget line items and variables.
 //
-// Syntax supported:
+// A cell is read like a spreadsheet cell:
+//   • no leading "="           → a literal number  (350  →  350)
+//   • leading "="              → a formula         (=350*2  →  700)
+//   • anything else (text)     → an error (NaN)
+//
+// Formula syntax (after the "="):
 //   number literals:  1500  /  2_000.50
 //   arithmetic:       +  -  *  /  (grouped with parentheses)
 //   variable refs:    MEMBERS  /  TICKET_PRICE
 //   account totals:   account(CC_CODE, ACCT_CODE)
+//   cell refs:        @L<lineItemId>.<C|D|E>   (the row-bound form of an A1
+//                     reference like =E5; see lib/budget-grid.ts)
 //
-// Evaluation uses fixed-point iteration so variables that reference account
-// totals (which in turn depend on line items that reference variables) resolve
-// correctly across cost centers. Circular dependencies are detected by a pass
-// limit and surfaced as NaN.
+// Evaluation uses fixed-point iteration so references that chain through
+// variables, account totals and other cells resolve across cost centres.
+// Circular dependencies are caught by a pass limit and surfaced as NaN.
 
 export type AccountTotals = Map<string, number>; // "CC_CODE:ACCT_CODE" → SEK
 export type VarValues    = Map<string, number>;  // variable name → SEK
+export type CellValues   = Map<string, number>;  // "<lineItemId>.<col>" → SEK
 
 // ── Tokeniser ──────────────────────────────────────────────────────
 
-type TokKind = "num" | "id" | "op" | "lparen" | "rparen" | "comma" | "eof";
+type TokKind = "num" | "id" | "ref" | "op" | "lparen" | "rparen" | "comma" | "eof";
 interface Tok { kind: TokKind; val: string }
 
 function tokenise(src: string): Tok[] {
@@ -29,6 +36,12 @@ function tokenise(src: string): Tok[] {
       let num = "";
       while (i < src.length && /[0-9._]/.test(src[i])) num += src[i++];
       toks.push({ kind: "num", val: num.replace(/_/g, "") });
+    } else if (ch === "@") {
+      // Row-bound cell reference: @L<lineItemId>:<fieldKey> (legacy: .<col>)
+      i++;
+      let ref = "";
+      while (i < src.length && /[A-Za-z0-9.:]/.test(src[i])) ref += src[i++];
+      toks.push({ kind: "ref", val: ref });
     } else if (/[A-Za-z_]/.test(ch)) {
       let id = "";
       while (i < src.length && /[A-Za-z0-9_]/.test(src[i])) id += src[i++];
@@ -57,6 +70,7 @@ function evalExpr(
   src: string,
   vars: VarValues,
   accounts: AccountTotals,
+  cells: CellValues,
 ): number {
   const toks = tokenise(src);
   let pos = 0;
@@ -100,6 +114,19 @@ function evalExpr(
       consume();
       return parseFloat(t.val);
     }
+    if (t.kind === "ref") {
+      consume();
+      // val is "L<lineItemId>:<fieldKey>"; the cell map is keyed
+      // "<lineItemId>:<fieldKey>". Legacy "<id>.<C|D|E>" maps to field keys.
+      let key = t.val.startsWith("L") ? t.val.slice(1) : t.val;
+      if (key.includes(".")) {
+        const dot = key.lastIndexOf(".");
+        const col = key.slice(dot + 1);
+        key = key.slice(0, dot) + ":" + (col === "C" ? "quantity" : col === "D" ? "unitPrice" : col === "E" ? "expression" : col);
+      }
+      const v = cells.get(key);
+      return v !== undefined ? v : NaN;
+    }
     if (t.kind === "lparen") {
       consume();
       const v = parseExpr();
@@ -131,25 +158,34 @@ function evalExpr(
   return Number.isFinite(result) ? result : NaN;
 }
 
+// A spreadsheet cell: literal number unless it starts with "=", in which case
+// the rest is a formula. Empty / non-numeric text → NaN.
+function evalCell(
+  raw: string | null | undefined,
+  vars: VarValues,
+  accounts: AccountTotals,
+  cells: CellValues,
+): number {
+  const s = (raw ?? "").trim();
+  if (!s) return NaN;
+  if (s.startsWith("=")) return evalExpr(s.slice(1), vars, accounts, cells);
+  // A trailing % is a fraction: "67%" → 0.67.
+  if (s.endsWith("%")) {
+    const p = Number(s.slice(0, -1).replace(/[\s_]/g, "").replace(",", "."));
+    return Number.isFinite(p) ? p / 100 : NaN;
+  }
+  const n = Number(s.replace(/_/g, "").replace(",", "."));
+  return Number.isFinite(n) ? n : NaN;
+}
+
 // ── Public API ─────────────────────────────────────────────────────
 
 export interface LineItemInput {
   id: string;
   accountKey: string; // "CC_CODE:ACCT_CODE"
-  expression: string;
-  // When both are present the value is `quantity * unitPrice` (the
-  // "antal × á-pris" form); otherwise `expression` is evaluated directly.
-  quantity?: string | null;
-  unitPrice?: string | null;
-}
-
-// A line item's value: quantity × unitPrice when both sides are given,
-// else the standalone expression.
-function lineItemValue(li: LineItemInput, vars: VarValues, accounts: AccountTotals): number {
-  const q = li.quantity?.trim();
-  const u = li.unitPrice?.trim();
-  if (q && u) return evalExpr(q, vars, accounts) * evalExpr(u, vars, accounts);
-  return evalExpr(li.expression, vars, accounts);
+  expression: string; // the Belopp cell — a literal number or "=…" formula
+  // Per-line values for user-defined columns: { [columnId]: string }.
+  values?: Record<string, string> | null;
 }
 
 export interface VariableInput {
@@ -161,16 +197,23 @@ export interface EvalResult {
   vars: VarValues;           // variable name → evaluated SEK value
   accounts: AccountTotals;   // "CC:ACCT" → sum of line items (SEK)
   lineItems: Map<string, number>; // lineItem.id → evaluated SEK value
+  cells: CellValues;         // "<lineItemId>:<fieldKey>" → evaluated SEK value
+  badLineItems: string[];    // ids whose cell didn't resolve (formula error)
+  badVariables: string[];    // variable names that didn't resolve
   errors: string[];          // human-readable warnings (circular etc.)
 }
 
 export function evaluate(
   variables: VariableInput[],
   lineItems: LineItemInput[],
-  maxPasses = 6,
+  // The general columns (x1…x6) whose per-line values are evaluated into cells
+  // so they can be referenced (numbers/percentages) by other formulas.
+  extraColumnKeys: string[] = [],
+  maxPasses = 8,
 ): EvalResult {
   const vars: VarValues     = new Map();
   const accounts: AccountTotals = new Map();
+  const cells: CellValues   = new Map();
   const liValues: Map<string, number> = new Map();
   const errors: string[] = [];
 
@@ -182,10 +225,18 @@ export function evaluate(
     const prevVars    = new Map(vars);
     const prevAccts   = new Map(accounts);
 
-    // Step 1: evaluate line items using current var + account values
+    // Step 1: evaluate line items + their cells using current var/account/cell values
     for (const li of lineItems) {
-      const val = lineItemValue(li, vars, accounts);
-      liValues.set(li.id, Number.isFinite(val) ? val : 0);
+      const value = evalCell(li.expression, vars, accounts, cells);
+      liValues.set(li.id, Number.isFinite(value) ? value : 0);
+      // Cell map keeps finite numbers (0 for unresolved) so the fixed point
+      // stays stable; the bad-cell set below tracks the actual errors. Keyed by
+      // field so refs survive column reorders.
+      cells.set(`${li.id}:expression`, Number.isFinite(value) ? value : 0);
+      for (const colId of extraColumnKeys) {
+        const cv = evalCell(li.values?.[colId], vars, accounts, cells);
+        cells.set(`${li.id}:${colId}`, Number.isFinite(cv) ? cv : 0);
+      }
     }
 
     // Step 2: sum line items into account totals
@@ -197,7 +248,7 @@ export function evaluate(
 
     // Step 3: evaluate variables in declaration order (later vars can ref earlier)
     for (const v of variables) {
-      const val = evalExpr(v.expression, vars, accounts);
+      const val = evalCell(v.expression, vars, accounts, cells);
       vars.set(v.name, Number.isFinite(val) ? val : 0);
     }
 
@@ -207,9 +258,21 @@ export function evaluate(
       [...accounts.entries()].every(([k, v]) => prevAccts.get(k) === v);
   }
 
+  // Final pass to flag cells/variables that don't resolve (after convergence).
+  const badLineItems: string[] = [];
+  for (const li of lineItems) {
+    const value = evalCell(li.expression, vars, accounts, cells);
+    if (!Number.isFinite(value)) badLineItems.push(li.id);
+  }
+  const badVariables: string[] = [];
+  for (const v of variables) {
+    const val = evalCell(v.expression, vars, accounts, cells);
+    if (!Number.isFinite(val)) badVariables.push(v.name);
+  }
+
   if (!stable) {
     errors.push("Budgeten har cirkulära beroenden — vissa värden kan vara felaktiga.");
   }
 
-  return { vars, accounts, lineItems: liValues, errors };
+  return { vars, accounts, lineItems: liValues, cells, badLineItems, badVariables, errors };
 }

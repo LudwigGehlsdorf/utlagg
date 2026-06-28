@@ -1,0 +1,116 @@
+@import "tailwindcss";
+
+/* ──────────────────────────────────────────────────────────────
+   Design tokens — D-sektionen brand. Pink (#f280a1) → purple
+   (#9966cc) drive the identity: a pink→purple gradient on primary
+   buttons and the active nav item, flat purple for links/focus/
+   small accents, pink reserved for the "Bokfört" highlight. Status
+   hues are nudged to sit alongside the brand; the canvas carries a
+   faint lilac tint. Every colour in the app resolves to a token
+   below.
+
+   ↩  To revert to the previous Apple-blue theme, restore the backup:
+        cp app/globals.css.bak app/globals.css
+   ────────────────────────────────────────────────────────────── */
+@theme {
+  /* Neutrals — white cards on a faint lilac canvas */
+  --color-background: #ffffff; /* cards, sidebar, bars */
+  --color-canvas: #faf8fd; /* app content backdrop (lilac-white) */
+  --color-surface: #f4f0f9; /* inputs, secondary chips (lilac-grey) */
+  --color-border: #e8e2f0;
+  --color-foreground: #1d1b22;
+  --color-muted: #6e6a78;
+
+  /* Brand accent — flat purple fallback + pink→purple gradient stops.
+     --color-accent is used for links, focus rings, text and small
+     fills; the gradient (.accent-gradient) is layered on buttons and
+     the active nav item. */
+  --color-accent: #9966cc;
+  --color-accent-hover: #8453b8;
+  --color-accent-soft: #f1eafb;
+  --color-accent-from: #f280a1; /* gradient start — brand pink */
+  --color-accent-to: #9966cc; /* gradient end   — brand purple */
+
+  /* Status — re-tinted to harmonise with the brand while staying
+     instantly readable (green = done, amber = waiting, red = problem) */
+  --color-success: #2f9e63;
+  --color-success-soft: #e7f6ed;
+  --color-warning: #b5610b;
+  --color-warning-soft: #fcefdf;
+  --color-danger: #d83a45;
+  --color-danger-soft: #fdebec;
+
+  /* Secondary brand pink — the "Bokfört" status highlight */
+  --color-pink: #c64b7d;
+  --color-pink-soft: #fdeaf2;
+
+  --color-scrollbar: #cdc4dd;
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text",
+    "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+
+  --shadow-card: 0 1px 2px rgba(29, 27, 34, 0.05), 0 1px 3px rgba(29, 27, 34, 0.05);
+  --shadow-pop: 0 8px 30px rgba(29, 27, 34, 0.14);
+}
+
+/* Budget sheets mimic the source Excel budget (solid black thin gridlines,
+   white cells, grey header/total fills, bold text) rather than the app's soft
+   lilac theme. Scoped to the table wrappers (class `budget-grid`): retoken the
+   palette to neutral greys, then force every gridline to one solid colour. */
+.budget-grid {
+  --grid-line: #6b7280; /* spreadsheet gridline — strong neutral grey */
+  --color-border: var(--grid-line); /* outer frame + row-group separators */
+  --color-surface: #ececec; /* account-header / Summa / Resultat fills (was lilac) */
+  --color-accent: #3f4654; /* section text + focus → neutral slate */
+  --color-accent-soft: #e2e4e8; /* section bands + formula-cell tint → grey */
+}
+/* Uniform gridlines like a real sheet: keep each utility's border WIDTH (thin
+   cells, the thick account separators) but force one solid colour, overriding
+   the soft /40–/60 opacity tints used everywhere else. */
+.budget-grid :is(th, td, tr, tbody) {
+  border-color: var(--grid-line);
+}
+
+/* Pink→purple brand gradient — used on primary buttons and the active
+   nav item. Pairs with white foreground/icons. */
+.accent-gradient {
+  background-image: linear-gradient(
+    135deg,
+    var(--color-accent-from),
+    var(--color-accent-to)
+  );
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  background: var(--color-canvas);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+  letter-spacing: -0.01em;
+}
+
+::selection {
+  background: var(--color-accent-soft);
+}
+
+/* Consistent, soft focus ring used across all interactive elements */
+*:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* Pull that focus ring inside the element — the border goes inward with no
+   outer margin (used by inputs tha t fill their whole cell). */
+.focus-inset:focus-visible {
+  outline-offset: -2px;
+}
+
+/* Subtle, unobtrusive scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-scrollbar) transparent;
+}

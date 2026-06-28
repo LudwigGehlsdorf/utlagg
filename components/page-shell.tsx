@@ -12,7 +12,7 @@ type PageWidth = "form" | "content" | "wide";
 
 const WIDTH: Record<PageWidth, string> = {
   form: "mx-auto max-w-2xl",
-  content: "mx-auto max-w-4xl",
+  content: "mx-auto max-w-6xl",
   wide: "",
 };
 

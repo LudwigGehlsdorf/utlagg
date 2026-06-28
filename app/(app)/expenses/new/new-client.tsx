@@ -23,16 +23,24 @@ import { cn } from "@/lib/utils";
 import { AllocationEditor, makeRow, numAlloc } from "@/components/allocation-editor";
 import type { AllocationRow } from "@/components/allocation-editor";
 
-const STEPS = ["Ladda upp", "Granska", "Matcha", "Skicka in"];
+// Step labels by key. The "Matcha" step only exists for card purchases; a
+// reimbursement goes straight from review to submit.
+const STEP_LABEL = { upload: "Ladda upp", review: "Granska", match: "Matcha", submit: "Skicka in" } as const;
 
 const num = (s: string) => Number(s.replace(",", ".")) || 0;
 
 export default function NewExpenseClient({
   costCenters,
   bankTransactions,
+  holdsCard,
+  payoutClearing,
+  payoutAccount,
 }: {
   costCenters: CostCenter[];
   bankTransactions: BankTransaction[];
+  holdsCard: boolean;
+  payoutClearing: string;
+  payoutAccount: string;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -47,7 +55,16 @@ export default function NewExpenseClient({
   })();
   const [step, setStep] = useState(0);
   const [scanning, setScanning] = useState(false);
-  const [paymentType, setPaymentType] = useState<PaymentType>("CARD");
+  // "Sektionskort" (CARD) is only offered to members who hold a card; everyone
+  // else can only file a reimbursement.
+  const paymentTypes = (Object.keys(PAYMENT_META) as PaymentType[]).filter((pt) => holdsCard || pt !== "CARD");
+  const [paymentType, setPaymentType] = useState<PaymentType>(holdsCard ? "CARD" : "REIMBURSEMENT");
+  // The step flow depends on payment type: a reimbursement skips "Matcha".
+  const stepKeys = paymentType === "CARD"
+    ? (["upload", "review", "match", "submit"] as const)
+    : (["upload", "review", "submit"] as const);
+  const stepLabels = stepKeys.map((k) => STEP_LABEL[k]);
+  const cur = stepKeys[step] ?? stepKeys[stepKeys.length - 1];
   const [form, setForm] = useState(() =>
     presetTxn
       ? {
@@ -70,8 +87,6 @@ export default function NewExpenseClient({
     ),
   ]);
   const [matchId, setMatchId] = useState<string | null>(presetTxn ? presetTxn.id : null);
-  const [clearing, setClearing] = useState("");
-  const [account, setAccount] = useState("");
   const [saving, setSaving] = useState(false);
 
   // Real receipt upload (browser → Next route → MinIO).
@@ -144,7 +159,7 @@ export default function NewExpenseClient({
       .slice(0, 4);
   }, [form.gross, bankTransactions]);
 
-  const matchDone = paymentType === "CARD" ? matchId !== null : clearing !== "" && account !== "";
+  const matchDone = matchId !== null; // only gates the card "Matcha" step
   const filledForm = form.gross && form.merchant && form.purchaseDate && allocations.length > 0;
 
   const grossSEK = num(form.gross);
@@ -215,9 +230,9 @@ export default function NewExpenseClient({
     <PageShell
       title="Nytt utlägg"
       description="Ladda upp ett kvitto så fyller vi i resten."
-      width={step === 0 ? "form" : "content"}
+      width={cur === "upload" ? "form" : "content"}
     >
-      <Stepper steps={STEPS} current={step} />
+      <Stepper steps={stepLabels} current={step} />
 
       {/* Hidden file input — used by the dropzone and "Byt kvitto" alike. */}
       <input
@@ -233,7 +248,7 @@ export default function NewExpenseClient({
       />
 
       {/* Step 1 — upload (shows the current receipt when you step back here) */}
-      {step === 0 && (
+      {cur === "upload" && (
         <Card>
           <CardBody>
             {receiptId && !scanning ? (
@@ -320,7 +335,7 @@ export default function NewExpenseClient({
           {/* Right: the current step's form */}
           <div>
       {/* Step 2 — review proposed form */}
-      {step === 1 && (
+      {cur === "review" && (
         <Card>
           <CardBody className="space-y-5">
             <div className="flex items-center gap-2 rounded-xl bg-accent-soft px-3.5 py-2.5 text-sm text-accent">
@@ -378,7 +393,7 @@ export default function NewExpenseClient({
                 Betalsätt
               </span>
               <div className="grid gap-3 sm:grid-cols-2">
-                {(Object.keys(PAYMENT_META) as PaymentType[]).map((pt) => (
+                {paymentTypes.map((pt) => (
                   <button
                     key={pt}
                     onClick={() => setPaymentType(pt)}
@@ -415,21 +430,19 @@ export default function NewExpenseClient({
       )}
 
       {/* Step 3 — match (branches on payment type) */}
-      {step === 2 && (
+      {cur === "match" && (
         <Card>
           <CardBody className="space-y-5">
-            {paymentType === "CARD" ? (
-              <>
-                <div>
-                  <h2 className="text-base font-semibold">
-                    Matcha mot banktransaktion
-                  </h2>
-                  <p className="mt-1 text-sm text-muted">
-                    Välj transaktionen från sektionskortet som hör till köpet.
-                    Belopp och datum låses till banken.
-                  </p>
-                </div>
-                <ul className="space-y-2.5">
+            <div>
+              <h2 className="text-base font-semibold">
+                Matcha mot banktransaktion
+              </h2>
+              <p className="mt-1 text-sm text-muted">
+                Välj transaktionen från sektionskortet som hör till köpet.
+                Belopp och datum låses till banken.
+              </p>
+            </div>
+            <ul className="space-y-2.5">
                   {candidates.map(({ t, diff }, i) => {
                     const selected = matchId === t.id;
                     const suggested = i === 0 && diff === 0;
@@ -476,40 +489,7 @@ export default function NewExpenseClient({
                       </li>
                     );
                   })}
-                </ul>
-              </>
-            ) : (
-              <>
-                <div>
-                  <h2 className="text-base font-semibold">
-                    Dina kontouppgifter
-                  </h2>
-                  <p className="mt-1 text-sm text-muted">
-                    Eftersom du lagt ut egna pengar matchas utbetalningen mot
-                    banken först när kassören betalar ut – efter attest.
-                  </p>
-                </div>
-                <div className="grid gap-5 sm:grid-cols-2">
-                  <Field label="Clearingnummer">
-                    <Input
-                      value={clearing}
-                      placeholder="t.ex. 8327-9"
-                      onChange={(e) => setClearing(e.target.value)}
-                    />
-                  </Field>
-                  <Field label="Kontonummer">
-                    <Input
-                      value={account}
-                      placeholder="t.ex. 123 456 789-0"
-                      onChange={(e) => setAccount(e.target.value)}
-                    />
-                  </Field>
-                </div>
-                <div className="rounded-xl bg-surface px-3.5 py-2.5 text-xs text-muted">
-                  Matchning mot banktransaktion sker automatiskt vid utbetalning.
-                </div>
-              </>
-            )}
+            </ul>
             <div className="flex flex-wrap justify-between gap-2.5 pt-1">
               <Button variant="secondary" onClick={() => setStep(1)}>
                 Tillbaka
@@ -528,7 +508,7 @@ export default function NewExpenseClient({
       )}
 
       {/* Step 4 — review & submit / success */}
-      {step === 3 && (
+      {cur === "submit" && (
         <Card>
           <CardBody className="space-y-5">
             <h2 className="text-base font-semibold">Granska och skicka in</h2>
@@ -545,15 +525,17 @@ export default function NewExpenseClient({
                 />
               ))}
               <Row label="Betalsätt" value={PAYMENT_META[paymentType].label} />
-              <Row
-                label="Matchning"
-                value={
-                  paymentType === "CARD"
-                    ? bankTransactions.find((t) => t.id === matchId)
-                        ?.description ?? "—"
-                    : "Vid utbetalning"
-                }
-              />
+              {paymentType === "CARD" ? (
+                <Row
+                  label="Matchning"
+                  value={bankTransactions.find((t) => t.id === matchId)?.description ?? "—"}
+                />
+              ) : (
+                <Row
+                  label="Utbetalas till"
+                  value={payoutClearing && payoutAccount ? `${payoutClearing} · ${payoutAccount}` : "Lägg till konto i Min profil"}
+                />
+              )}
             </dl>
 
             <div className="flex items-center gap-2 rounded-xl bg-surface px-3.5 py-2.5 text-sm text-muted">
@@ -567,7 +549,7 @@ export default function NewExpenseClient({
               för attest.
             </div>
             <div className="flex flex-wrap justify-between gap-2.5 pt-1">
-              <Button variant="secondary" onClick={() => setStep(2)}>
+              <Button variant="secondary" onClick={() => setStep(step - 1)}>
                 Tillbaka
               </Button>
               <div className="flex gap-2.5">

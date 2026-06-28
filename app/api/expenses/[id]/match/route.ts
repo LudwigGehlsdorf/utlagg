@@ -53,13 +53,20 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   }
 
   if (transactionId !== null) {
-    // Validate the transaction exists and isn't already taken by another expense.
+    // Validate the transaction exists, belongs to the submitter's own section
+    // card, and isn't already taken by another expense.
     const txn = await prisma.bankTransaction.findUnique({
       where: { id: transactionId },
-      include: { matchedExpense: { select: { reference: true } } },
+      include: { matchedExpense: { select: { reference: true } }, card: { select: { holderId: true } } },
     });
     if (!txn) {
       return NextResponse.json({ error: "Transaktionen finns inte" }, { status: 422 });
+    }
+    if (txn.card?.holderId !== expense.submitterId) {
+      return NextResponse.json(
+        { error: "Transaktionen tillhör inte utläggets sektionskort" },
+        { status: 403 },
+      );
     }
     if (txn.matchedExpense && txn.matchedExpense.reference !== reference) {
       return NextResponse.json(

@@ -22,7 +22,7 @@ export const SIGNED_STATUSES: ExpenseStatus[] = ["APPROVED", "BOOKED", "EXPORTED
 export const isSigned = (status: string): boolean =>
   SIGNED_STATUSES.includes(status as ExpenseStatus);
 
-type Tone = "neutral" | "accent" | "success" | "warning" | "danger" | "purple";
+type Tone = "neutral" | "accent" | "success" | "warning" | "danger" | "pink";
 
 export const STATUS_META: Record<
   ExpenseStatus,
@@ -55,7 +55,7 @@ export const STATUS_META: Record<
   },
   BOOKED: {
     label: "Bokfört",
-    tone: "purple",
+    tone: "pink",
     description: "Konterat – redo att exporteras.",
   },
   EXPORTED: {
@@ -71,7 +71,7 @@ export const TONE_CLASSES: Record<Tone, string> = {
   success: "bg-success-soft text-success",
   warning: "bg-warning-soft text-warning",
   danger: "bg-danger-soft text-danger",
-  purple: "bg-purple-soft text-purple",
+  pink: "bg-pink-soft text-pink",
 };
 
 export const PAYMENT_META: Record<

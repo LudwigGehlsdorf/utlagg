@@ -9,6 +9,7 @@ import { IconCheck, IconPlus } from "@/components/ui/icons";
 import { useRole } from "@/components/role-context";
 import { ReceiptViewer } from "@/components/receipt-viewer";
 import { PageShell } from "@/components/page-shell";
+import { Combobox } from "@/components/ui/combobox";
 import { ACCOUNT, ACCOUNTS, accountName } from "@/lib/accounts";
 import { formatSEK } from "@/lib/format";
 import { DateInput } from "@/components/ui/field";
@@ -98,12 +99,21 @@ export default function BookExpenseClient({
   const mode: "create" | "edit" | null =
     expense?.status === "APPROVED" ? "create" : expense?.status === "BOOKED" ? "edit" : null;
 
+  // The verifikationstext always starts with a fixed, non-editable prefix: the
+  // submitter's name for a card purchase, "PU <name>" for a reimbursement. The
+  // user can only append free text after it.
+  const textPrefix = expense
+    ? expense.paymentType === "CARD" ? expense.submitterName : `PU ${expense.submitterName}`
+    : "";
+
   const [date, setDate] = useState(
     () => expense?.verification?.date?.slice(0, 10) ?? new Date().toISOString().slice(0, 10),
   );
-  const [description, setDescription] = useState(
-    () => expense?.verification?.description ?? expense?.title ?? "",
-  );
+  const [textSuffix, setTextSuffix] = useState(() => {
+    const full = expense?.verification?.description ?? expense?.title ?? "";
+    return full.startsWith(textPrefix) ? full.slice(textPrefix.length).trim() : full;
+  });
+  const verifikationstext = textSuffix.trim() ? `${textPrefix} ${textSuffix.trim()}` : textPrefix;
   const [rows, setRows] = useState<Row[]>(() =>
     expense?.status === "BOOKED"
       ? rowsFromVerification(expense)
@@ -177,7 +187,7 @@ export default function BookExpenseClient({
     try {
       const payload = {
         date,
-        description,
+        description: verifikationstext,
         lines: rows.map((r) => ({
           account: r.account.trim(),
           accountName: accountName(r.account),
@@ -210,6 +220,9 @@ export default function BookExpenseClient({
   const cellInput =
     "block h-10 w-full bg-transparent px-3 text-center text-sm placeholder:text-muted/50 focus-inset";
   const amountInput = cn(cellInput, "tabular-nums");
+  const cellCombo = "h-10 bg-transparent px-3 focus-inset";
+  const accountOptions = ACCOUNTS.map((a) => ({ value: a.number, label: `${a.number} · ${a.name}` }));
+  const ccOptions = costCenters.map((c) => ({ value: c.code, label: `${c.code} · ${c.name}` }));
 
   return (
     <PageShell
@@ -252,11 +265,19 @@ export default function BookExpenseClient({
           </div>
           <div>
             <label className="mb-1.5 block text-[13px] font-medium">Verifikationstext</label>
-            <input
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className={fieldInput}
-            />
+            <div className="flex h-9 w-full items-center rounded-lg border border-border bg-background px-2.5 text-sm focus-within:border-accent">
+              <span className="shrink-0 whitespace-nowrap font-medium text-muted" title="Fast prefix – kan inte ändras">
+                {textPrefix}
+              </span>
+              <input
+                value={textSuffix}
+                onChange={(e) => setTextSuffix(e.target.value)}
+                placeholder="lägg till text…"
+                aria-label="Verifikationstext (efter prefix)"
+                style={{ outline: "none" }}
+                className="ml-1.5 min-w-0 flex-1 bg-transparent placeholder:text-muted/50"
+              />
+            </div>
           </div>
         </CardBody>
       </Card>
@@ -277,36 +298,29 @@ export default function BookExpenseClient({
             </thead>
             <tbody className="divide-y divide-border">
               {rows.map((r) => {
-                const valid = accountExists(r.account);
                 return (
                   <tr key={r.id} className="divide-x divide-border">
                     <td className="p-0 align-middle">
-                      <input
-                        list="bas-accounts"
+                      <Combobox
+                        options={accountOptions}
                         value={r.account}
-                        onChange={(e) => patch(r.id, { account: e.target.value })}
-                        placeholder="Sök konto…"
-                        title={r.account ? (valid ? accountName(r.account) : "Okänt konto") : undefined}
-                        className={cn(cellInput, r.account && !valid && "text-danger")}
+                        onChange={(v) => patch(r.id, { account: v })}
+                        placeholder="Konto…"
+                        searchPlaceholder="Sök konto…"
+                        buttonClassName={cellCombo}
+                        aria-label="Konto"
                       />
                     </td>
                     <td className="p-0 align-middle">
-                      <input
-                        list="cost-centers"
+                      <Combobox
+                        options={ccOptions}
                         value={r.costCenterCode}
-                        onChange={(e) => patch(r.id, { costCenterCode: e.target.value })}
+                        onChange={(v) => patch(r.id, { costCenterCode: v })}
                         placeholder="—"
-                        title={
-                          r.costCenterCode
-                            ? costCenterExists(r.costCenterCode)
-                              ? costCenters.find((c) => c.code === r.costCenterCode.trim())?.name
-                              : "Okänt kostnadsställe"
-                            : undefined
-                        }
-                        className={cn(
-                          cellInput,
-                          r.costCenterCode && !costCenterExists(r.costCenterCode) && "text-danger",
-                        )}
+                        searchPlaceholder="Sök kostnadsställe…"
+                        allowClear
+                        buttonClassName={cellCombo}
+                        aria-label="Kostnadsställe"
                       />
                     </td>
                     <td className="p-0 align-middle">
@@ -402,20 +416,6 @@ export default function BookExpenseClient({
       </div>
 
       {/* Shared suggestions for the typeable Konto / Kostnadsställe inputs. */}
-      <datalist id="bas-accounts">
-        {ACCOUNTS.map((a) => (
-          <option key={a.number} value={a.number}>
-            {a.number} · {a.name}
-          </option>
-        ))}
-      </datalist>
-      <datalist id="cost-centers">
-        {costCenters.map((c) => (
-          <option key={c.code} value={c.code}>
-            {c.code} · {c.name}
-          </option>
-        ))}
-      </datalist>
     </PageShell>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import { Combobox } from "@/components/ui/combobox";
 import type { CostCenter } from "@/lib/types";
 
 export interface AllocationRow {
@@ -45,10 +46,7 @@ export function AllocationEditor({ costCenters, grossAmount, value, onChange }: 
     onChange([...value, makeRow(next?.code ?? costCenters[0]?.code ?? "")]);
   }
 
-  const sel = cn(
-    "flex-1 rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm",
-    "focus:border-accent focus:outline-none",
-  );
+  const ccOptions = costCenters.map((c) => ({ value: c.code, label: `${c.code} · ${c.name}` }));
   const amt = cn(
     "w-28 rounded-lg border border-border bg-background px-2.5 py-1.5 text-right text-sm tabular-nums",
     "focus:border-accent focus:outline-none",
@@ -64,17 +62,15 @@ export function AllocationEditor({ costCenters, grossAmount, value, onChange }: 
       {value.map((row) => (
         <div key={row.id} className="space-y-1.5">
           <div className="flex items-center gap-2">
-            <select
+            <Combobox
+              className="flex-1"
+              options={ccOptions}
               value={row.costCenterCode}
-              onChange={(e) => update(row.id, { costCenterCode: e.target.value })}
-              className={sel}
-            >
-              {costCenters.map((c) => (
-                <option key={c.code} value={c.code}>
-                  {c.code} · {c.name}
-                </option>
-              ))}
-            </select>
+              onChange={(v) => update(row.id, { costCenterCode: v })}
+              placeholder="Välj kostnadsställe…"
+              searchPlaceholder="Sök kostnadsställe…"
+              aria-label="Kostnadsställe"
+            />
             <input
               type="text"
               inputMode="decimal"

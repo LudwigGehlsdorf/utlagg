@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { resolveUserId } from "@/lib/current-user";
 import { evaluate } from "@/lib/budget-eval";
 import type { LineItemInput, VariableInput } from "@/lib/budget-eval";
+import { EXTRA_COLUMN_KEYS } from "@/lib/budget-grid";
 import { effectiveKind } from "@/lib/budget";
 import {
   financialYearIdForCalendarYear,
@@ -20,7 +21,9 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     include: {
       createdBy: { select: { name: true } },
       clonedFrom: { select: { id: true, name: true } },
-      budget: { select: { id: true, year: true, name: true, baselineRevisionId: true } },
+      budget: {
+        select: { id: true, year: true, name: true, baselineRevisionId: true },
+      },
       variables: { orderBy: { sortOrder: "asc" } },
       costCenters: {
         orderBy: { sortOrder: "asc" },
@@ -48,13 +51,12 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
         id: li.id,
         accountKey: `${cc.costCenter.code}:${acct.accountCode}`,
         expression: li.expression,
-        quantity: li.quantity,
-        unitPrice: li.unitPrice,
+        values: (li.values ?? {}) as Record<string, string>,
       })),
     ),
   );
 
-  const { vars, accounts, lineItems: liValues, errors } = evaluate(varInputs, liInputs);
+  const { vars, accounts, lineItems: liValues, cells, badLineItems, badVariables, errors } = evaluate(varInputs, liInputs, [...EXTRA_COLUMN_KEYS]);
 
   // Actual outcome from the Fortnox ledger for this budget's calendar year,
   // keyed `${costCenterCode}:${accountCode}` to match the evaluated accounts.
@@ -81,6 +83,9 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       vars: Object.fromEntries(vars),
       accounts: Object.fromEntries(accounts),
       lineItems: Object.fromEntries(liValues),
+      cells: Object.fromEntries(cells),
+      badLineItems,
+      badVariables,
       errors,
     },
     actuals,
